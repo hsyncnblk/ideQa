@@ -9,7 +9,7 @@ import {
   Lock
 } from 'lucide-react';
 
-export default function ActionGrid({ onOpenCreateSubtask }) {
+export default function ActionGrid({ onOpenCreateSubtask, onOpenCreateIpk }) {
   const actions = [
     {
       id: 'subtask',
@@ -21,18 +21,19 @@ export default function ActionGrid({ onOpenCreateSubtask }) {
       badge: 'AI Destekli',
     },
     {
+      id: 'ipk',
+      title: 'İPK Oluştur',
+      subtitle: 'IPK Demand (Talep) otomasyonu',
+      icon: FileCheck2,
+      isActive: true,
+      onClick: onOpenCreateIpk,
+      badge: 'AI Destekli',
+    },
+    {
       id: 'story',
       title: 'Story Oluştur',
       subtitle: 'Kabul kriteri ve hikaye üretimi',
       icon: FileText,
-      isActive: false,
-      badge: 'Yakında',
-    },
-    {
-      id: 'ipk',
-      title: 'İPK Oluştur',
-      subtitle: 'İhtiyaç & proje kabul süreçleri',
-      icon: FileCheck2,
       isActive: false,
       badge: 'Yakında',
     },

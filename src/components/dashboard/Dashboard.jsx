@@ -7,6 +7,7 @@ export default function Dashboard({
   user = 'Hüseyin Ç.', 
   selectedTeam, 
   onOpenCreateSubtask, 
+  onOpenCreateIpk,
   subtasks,
   onSelectSubtask
 }) {
@@ -20,7 +21,7 @@ export default function Dashboard({
             Merhaba, {user} 👋
           </h1>
           <p className="text-sm text-slate-500 mt-1.5 leading-relaxed max-w-xl">
-            Jira Story'nizi girin, Gemini AI ile test senaryolarını saniyeler içinde Subtask olarak Jira'ya aktarın.
+            Jira Story'nizi girin, Gemini AI ile test senaryolarını ve IPK Demand taleplerini saniyeler içinde Jira'ya aktarın.
           </p>
         </div>
 
@@ -32,8 +33,11 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* 2. Kompakt Aksiyon Seçici (Story'e Subtask, Story, Bug, İPK) */}
-      <ActionGrid onOpenCreateSubtask={onOpenCreateSubtask} />
+      {/* 2. Kompakt Aksiyon Seçici (Subtask, İPK, Story, Bug) */}
+      <ActionGrid 
+        onOpenCreateSubtask={onOpenCreateSubtask} 
+        onOpenCreateIpk={onOpenCreateIpk} 
+      />
 
       {/* 3. Sade Son İşlemler Tablosu */}
       <RecentActivity 

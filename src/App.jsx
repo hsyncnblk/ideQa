@@ -6,6 +6,7 @@ import TeamSetupModal from './components/auth/TeamSetupModal';
 import Dashboard from './components/dashboard/Dashboard';
 import SubtaskDrawer from './components/subtask/SubtaskDrawer';
 import SubtaskDetailModal from './components/subtask/SubtaskDetailModal';
+import IpkDrawer from './components/ipk/IpkDrawer';
 import { useAuth } from './hooks/useAuth';
 import { useSubtasks } from './hooks/useSubtasks';
 
@@ -30,6 +31,7 @@ export default function App() {
   } = useSubtasks();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isIpkDrawerOpen, setIsIpkDrawerOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
   const handleSubtaskCreated = async ({ storyKey, storySummary, platforms, scenarios, team }) => {
@@ -48,6 +50,16 @@ export default function App() {
       count: result.count,
       platforms: result.platforms,
       subtaskKey: result.subtasks[0]?.id,
+    });
+  };
+
+  const handleIpkCreated = (result) => {
+    setToast({
+      message: result.message || 'IPK Demand kaydı başarıyla oluşturuldu!',
+      team: selectedTeam,
+      count: 1,
+      platforms: ['IPK Demand'],
+      subtaskKey: result.key,
     });
   };
 
@@ -77,6 +89,7 @@ export default function App() {
               user={currentUser}
               selectedTeam={selectedTeam}
               onOpenCreateSubtask={() => setIsDrawerOpen(true)}
+              onOpenCreateIpk={() => setIsIpkDrawerOpen(true)}
               subtasks={subtasks}
               onSelectSubtask={(task) => setActiveSubtaskDetail(task)}
             />
@@ -91,13 +104,21 @@ export default function App() {
             isCreatingSubtask={isCreating}
           />
 
+          {/* 5. IPK (İdefix Portfolio Kanban) Demand Drawer Akışı */}
+          <IpkDrawer
+            isOpen={isIpkDrawerOpen}
+            onClose={() => setIsIpkDrawerOpen(false)}
+            selectedTeam={selectedTeam}
+            onIpkCreated={handleIpkCreated}
+          />
+
           {/* Subtask Detay Modalı */}
           <SubtaskDetailModal
             subtask={activeSubtaskDetail}
             onClose={() => setActiveSubtaskDetail(null)}
           />
 
-          {/* 5. Jira Başarı Toast Bildirimi */}
+          {/* 6. Jira Başarı Toast Bildirimi */}
           <Toast toast={toast} onClose={() => setToast(null)} />
         </>
       )}
@@ -105,3 +126,4 @@ export default function App() {
     </div>
   );
 }
+

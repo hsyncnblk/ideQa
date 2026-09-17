@@ -4,7 +4,7 @@ import { defineConfig, loadEnv } from 'vite'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const jiraBaseUrl = env.VITE_JIRA_BASE_URL || 'https://jira.idefix.com'
+  const jiraBaseUrl = env.VITE_JIRA_BASE_URL || 'https://hsynornek.atlassian.net'
 
   return {
     plugins: [react()],
