@@ -3,17 +3,20 @@ import { Users, Tag, CheckCircle2 } from 'lucide-react';
 import ActionGrid from './ActionGrid';
 import RecentActivity from './RecentActivity';
 
-export default function Dashboard({ 
-  user = 'Hüseyin Ç.', 
-  selectedTeam, 
-  onOpenCreateSubtask, 
+export default function Dashboard({
+  user = 'Hüseyin Ç.',
+  selectedTeam,
+  onOpenCreateSubtask,
   onOpenCreateIpk,
+  onOpenCreateDevSubtask,
+  onOpenCreateStory,
+  onOpenCreateBug,
   subtasks,
   onSelectSubtask
 }) {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10">
-      
+
       {/* 1. Sade ve Ferah Karşılama Alanı */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2 border-b border-slate-200/60">
         <div>
@@ -21,7 +24,7 @@ export default function Dashboard({
             Merhaba, {user} 👋
           </h1>
           <p className="text-sm text-slate-500 mt-1.5 leading-relaxed max-w-xl">
-            Jira Story'nizi girin, Gemini AI ile test senaryolarını ve IPK Demand taleplerini saniyeler içinde Jira'ya aktarın.
+            Jira Story'nizi girin, Gemini AI ile test senaryolarını, Story'leri, Issue/Bug'ları ve IPK Demand taleplerini saniyeler içinde Jira'ya aktarın.
           </p>
         </div>
 
@@ -33,16 +36,19 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* 2. Kompakt Aksiyon Seçici (Subtask, İPK, Story, Bug) */}
-      <ActionGrid 
-        onOpenCreateSubtask={onOpenCreateSubtask} 
-        onOpenCreateIpk={onOpenCreateIpk} 
+      {/* 2. Kompakt Aksiyon Seçici (Subtask, Story, Dev Subtask, İPK, Bug) */}
+      <ActionGrid
+        onOpenCreateSubtask={onOpenCreateSubtask}
+        onOpenCreateIpk={onOpenCreateIpk}
+        onOpenCreateDevSubtask={onOpenCreateDevSubtask}
+        onOpenCreateStory={onOpenCreateStory}
+        onOpenCreateBug={onOpenCreateBug}
       />
 
       {/* 3. Sade Son İşlemler Tablosu */}
-      <RecentActivity 
-        subtasks={subtasks} 
-        onSelectSubtask={onSelectSubtask} 
+      <RecentActivity
+        subtasks={subtasks}
+        onSelectSubtask={onSelectSubtask}
       />
 
     </div>

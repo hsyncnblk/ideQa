@@ -1,21 +1,23 @@
 import React, { useState } from 'react';
-import { 
-  Sparkles, 
-  Layers, 
-  ChevronDown, 
-  LogOut, 
-  ShieldCheck, 
-  Users, 
-  Check, 
-  ExternalLink 
+import {
+  Sparkles,
+  Layers,
+  ChevronDown,
+  LogOut,
+  ShieldCheck,
+  Users,
+  Check,
+  BarChart3,
+  ExternalLink
 } from 'lucide-react';
 import { MP_TEAMS } from '../../constants/jiraConstants';
 
-export default function Header({ 
-  user = 'Hüseyin Ç.', 
-  selectedTeam, 
-  onSelectTeam, 
-  onLogout 
+export default function Header({
+  user = 'Hüseyin Ç.',
+  selectedTeam,
+  onSelectTeam,
+  onLogout,
+  onOpenStats,
 }) {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false);
@@ -24,13 +26,13 @@ export default function Header({
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-15">
-          
+
           {/* Sol Taraf: Minimal Logo & İsim */}
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg jira-gradient-bg flex items-center justify-center text-white shadow-2xs">
               <Layers className="w-4 h-4" />
             </div>
-            
+
             <div className="flex items-center gap-2">
               <span className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                 Jira <span className="text-jira-600">AI</span> Test Asistanı
@@ -44,7 +46,7 @@ export default function Header({
 
           {/* Sağ Taraf: Takım Rozeti & Kullanıcı Profili */}
           <div className="flex items-center gap-3">
-            
+
             {/* MPTeam Seçici */}
             {selectedTeam && (
               <div className="relative">
@@ -74,11 +76,10 @@ export default function Header({
                             onSelectTeam(team.name);
                             setTeamDropdownOpen(false);
                           }}
-                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                            selectedTeam === team.name
+                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors cursor-pointer ${selectedTeam === team.name
                               ? 'bg-jira-50 text-jira-700 font-bold'
                               : 'text-slate-700 hover:bg-slate-50'
-                          }`}
+                            }`}
                         >
                           <div>
                             <p className="font-semibold">{team.name}</p>
@@ -94,6 +95,16 @@ export default function Header({
                 )}
               </div>
             )}
+
+            {/* İstatistik Butonu */}
+            <button
+              onClick={onOpenStats}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold text-indigo-700 transition-colors cursor-pointer"
+              title="Ekip İstatistikleri"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">İstatistik</span>
+            </button>
 
             {/* Kullanıcı Profili (Hüseyin Ç.) */}
             <div className="relative">

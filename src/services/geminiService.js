@@ -1,42 +1,110 @@
-import { envConfig } from '../config/envConfig';
+/**
+ * @module services/geminiService
+ *
+ * Business logic layer for Google Gemini AI operations.
+ * All HTTP concerns delegated to GeminiApiClient.
+ * This service focuses on prompt construction, result transformation,
+ * and multimodal content assembly.
+ */
+
 import { formatStoryKey } from '../utils/formatters';
 import { jiraService } from './jiraService';
+import { geminiApiClient } from '../core/GeminiApiClient';
+import { logError } from '../core/ErrorHandler';
+import { PLATFORM_INFO } from '../schemas/formSchemas';
 
-const PLATFORM_INFO = {
-  FE: { name: 'Frontend (Web UI)', framework: 'Playwright / Selenium' },
-  BE: { name: 'Backend (API Services)', framework: 'RestAssured / Java / JUnit' },
-  App: { name: 'Mobile App (iOS & Android)', framework: 'Appium / Mobile Automation' }
-};
+// ── Shared Helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Converts image objects to Gemini-compatible inlineData parts.
+ * @param {Array<{ base64: string, mimeType: string }>} images
+ * @returns {Array<object>}
+ */
+function buildImageParts(images = []) {
+  return images
+    .filter((img) => img && img.base64)
+    .map((img) => ({
+      inlineData: {
+        mimeType: img.mimeType || 'image/png',
+        data: img.base64,
+      },
+    }));
+}
+
+/**
+ * Downloads Jira image attachments as base64 parts for Gemini Vision.
+ * @param {Array} attachments - Jira attachment metadata
+ * @param {number} [maxCount=3]
+ * @returns {Promise<Array<object>>}
+ */
+async function downloadJiraImageParts(attachments = [], maxCount = 3) {
+  const imageAttachments = attachments
+    .filter(
+      (att) =>
+        att.mimeType &&
+        (att.mimeType.startsWith('image/') || /\.(png|jpg|jpeg|webp)$/i.test(att.filename))
+    )
+    .slice(0, maxCount);
+
+  const parts = [];
+  for (const att of imageAttachments) {
+    try {
+      if (att.contentUrl) {
+        const downloaded = await jiraService.downloadAttachmentAsBase64(att.contentUrl);
+        parts.push({
+          inlineData: {
+            mimeType: downloaded.mimeType || att.mimeType || 'image/png',
+            data: downloaded.base64,
+          },
+        });
+      }
+    } catch (err) {
+      logError(`downloadJiraImage[${att.filename}]`, err);
+    }
+  }
+  return parts;
+}
+
+// ── Gemini Service ────────────────────────────────────────────────────────────
 
 export const geminiService = {
   /**
-   * Generates platform-specific, editable test scenarios for selected platforms
+   * Generates platform-specific test scenarios for selected platforms.
    * @param {Object} params
-   * @param {string} params.storyKey - e.g. "PROJ-123"
-   * @param {Array<string>} params.platforms - e.g. ['App', 'BE', 'FE']
-   * @param {string} params.extraGuidance - optional guidance
-   * @param {string} params.teamName - active MPTeam
+   * @returns {Promise<Object>}
    */
-  async generatePlatformScenarios({ storyKey, platforms = ['FE'], extraGuidance = '', teamName = 'Team Alpha' }) {
+  async generatePlatformScenarios({
+    storyKey,
+    platforms = ['FE'],
+    extraGuidance = '',
+    teamName = 'Team Alpha',
+    customImage = null,
+  }) {
     const formattedKey = formatStoryKey(storyKey);
     let storyData;
 
     try {
-      // 1. Jira'dan gerçek story detaylarını çek
       storyData = await jiraService.fetchStory(formattedKey);
     } catch (error) {
       throw new Error(`Jira'dan Story bilgileri alınamadı: ${error.message}`);
     }
 
-    const { summary, description, type } = storyData;
+    const { summary, description, type, attachments = [] } = storyData;
 
-    // 2. Gemini API için Prompt hazırla
+    // Build image parts: custom image + Jira attachments
+    const imageParts = [
+      ...buildImageParts(customImage ? [customImage] : []),
+      ...(await downloadJiraImageParts(attachments)),
+    ];
+
     const prompt = `
-Lütfen aşağıdaki Jira Story detaylarına göre test senaryoları üret.
+Lütfen aşağıdaki Jira Story detaylarına ve varsa ekli görsellere/tasarımlara göre test senaryoları üret.
 
 Jira Story: ${formattedKey} (${type})
 Başlık: ${summary}
 Açıklama: ${description || 'Açıklama girilmemiş.'}
+${attachments.length > 0 ? `Story'de Bulunan Ekli Dosyalar: ${attachments.map((a) => a.filename).join(', ')}` : ''}
+${imageParts.length > 0 ? `DİKKAT: Bu Story'e ait ${imageParts.length} adet ekran görüntüsü / tasarım / mockup görseli eklenmiştir. Lütfen görsellerdeki butonları, form alanlarını, hata durumlarını, UI elementlerini ve akışları DİKKATLE ANALİZ EDEREK test senaryolarına birebir dahil et!` : ''}
 ${extraGuidance ? `
 ---
 ÖZEL EK YÖNLENDİRME / İSTEKLER: 
@@ -71,61 +139,14 @@ Senaryoları BDD (Given/When/Then) formatında DEĞİL, yapılandırılmış pro
 (Sadece istenen platformların key'leri (FE, BE, App) olmalı.)
 `;
 
-    // 3. Gemini REST API Çağrısı (fetch)
-    const apiKey = envConfig.gemini.apiKey;
-    const model = envConfig.gemini.model;
+    const parts = [{ text: prompt }, ...imageParts];
+    const generatedJson = await geminiApiClient.generateJson(parts, 'Test Senaryoları');
 
-    if (!apiKey || apiKey.includes('your_gemini_api_key_here')) {
-      throw new Error('Gemini API Anahtarı eksik veya geçersiz. Lütfen .env dosyasını kontrol edin.');
-    }
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }]
-          }
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json'
-        }
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API Hatası: ${response.status} - ${errText}`);
-    }
-
-    const data = await response.json();
-    const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!resultText) {
-      throw new Error('Gemini boş bir sonuç döndürdü.');
-    }
-
-    let generatedJson;
-    try {
-      // Gemini bazen JSON çıktısını markdown bloğu içine alabilir (```json ... ```)
-      const cleanText = resultText.replace(/```json/gi, '').replace(/```/gi, '').trim();
-      generatedJson = JSON.parse(cleanText);
-    } catch (e) {
-      console.error("Parse hatası, raw text:", resultText);
-      throw new Error('Gemini beklenen JSON formatında cevap vermedi. Lütfen tekrar deneyin.');
-    }
-
-    // 4. UI'ın beklediği formata dönüştür
+    // Transform to UI format
     const scenariosByPlatform = {};
     platforms.forEach((platform) => {
       const meta = PLATFORM_INFO[platform];
       const platformData = generatedJson[platform] || {};
-      
-      const positiveContent = platformData.positive || `### ${platform} Pozitif Senaryolar\n(İçerik üretilemedi)`;
-      const negativeContent = platformData.negative || `### ${platform} Negatif Senaryolar\n(İçerik üretilemedi)`;
 
       scenariosByPlatform[platform] = {
         platformKey: platform,
@@ -134,13 +155,13 @@ Senaryoları BDD (Given/When/Then) formatında DEĞİL, yapılandırılmış pro
         positive: {
           id: `${platform.toLowerCase()}-pos`,
           title: `Pozitif Senaryolar (${platform})`,
-          content: positiveContent,
+          content: platformData.positive || `### ${platform} Pozitif Senaryolar\n(İçerik üretilemedi)`,
           selected: true,
         },
         negative: {
           id: `${platform.toLowerCase()}-neg`,
           title: `Negatif & Sınır Senaryoları (${platform})`,
-          content: negativeContent,
+          content: platformData.negative || `### ${platform} Negatif Senaryolar\n(İçerik üretilemedi)`,
           selected: true,
         },
       };
@@ -157,16 +178,18 @@ Senaryoları BDD (Given/When/Then) formatında DEĞİL, yapılandırılmış pro
   },
 
   /**
-   * Generates comprehensive IPK (İdefix Portfolio Kanban) Demand Form data using Gemini AI
+   * Generates IPK Demand form data using Gemini AI.
    * @param {Object} params
-   * @param {'story'|'text'} params.mode
-   * @param {string} [params.storyKey]
-   * @param {string} [params.textDescription]
-   * @param {Object|null} [params.imageFile] - { mimeType, base64 }
-   * @param {string} [params.extraGuidance] - optional extra note for AI in story mode
-   * @param {string} [params.teamName]
+   * @returns {Promise<Object>}
    */
-  async generateIpkDemand({ mode = 'story', storyKey = '', textDescription = '', imageFile = null, extraGuidance = '', teamName = 'Team Alpha' }) {
+  async generateIpkDemand({
+    mode = 'story',
+    storyKey = '',
+    textDescription = '',
+    imageFile = null,
+    extraGuidance = '',
+    teamName = 'Team Alpha',
+  }) {
     let sourceContent = '';
     let formattedKey = '';
 
@@ -176,7 +199,7 @@ Senaryoları BDD (Given/When/Then) formatında DEĞİL, yapılandırılmış pro
         const storyData = await jiraService.fetchStory(formattedKey);
         sourceContent = `Jira Story No: ${formattedKey}\nBaşlık: ${storyData.summary}\nAçıklama: ${storyData.description || 'Açıklama girilmemiş.'}\nTürü: ${storyData.type || 'Story'}`;
       } catch (err) {
-        console.warn('Jira Story detayları alınamadı, genel başlıkla devam ediliyor:', err.message);
+        logError('geminiService.generateIpkDemand.fetchStory', err);
         sourceContent = `Jira Story No: ${formattedKey}\nTalep Konusu: ${formattedKey} biletli kullanıcı hikayesi için IPK talep analizi.`;
       }
       if (extraGuidance) {
@@ -202,9 +225,26 @@ Aşağıdaki kurallara KESİNLİKLE UY:
 2. Oluşturulacak Jira kaydının etiketleri (labels) alanına mutlaka "otomasyon_ai" etiketini ekle.
 3. Yanıtını SADECE aşağıda belirtilen geçerli bir JSON formatında ver. Markdown kod blokları (\`\`\`json ... \`\`\`) dışında hiçbir ekstra açıklama veya metin yazma.
 4. Kabul kriterleri (acceptance_criteria) en az 3 maddeden oluşan, test edilebilir ve net ifadeler içermelidir (1. ..., 2. ..., 3. ... formatında).
-5. Confidence dropdown için "High", "Medium" veya "Low" değerlerinden birini seç.
-6. Demand Size dropdown için "S", "M", "L" veya "XL" değerlerinden birini seç.
-7. Show on timeline için "Evet" veya "Hayır" değerlerinden birini seç.
+
+DROPDOWN ALANLARI - Aşağıdaki alanlara SADECE verilen seçeneklerden birini yaz (başka bir değer yazma):
+
+business_goal seçenekleri: "Gelir Artışı" | "Maliyet Azaltma" | "Müşteri Deneyiminin İyileştirilmesi" | "Operasyonel Verimlilik" | "Pazara Giriş Hızı" | "Satıcı / Tedarikçi Deneyiminin İyileştirilmesi" | "Risk Azaltma / Uyumluluk" | "Ürün Kalitesi / Güvenilirlik" | "Diğer"
+
+impacted_stakeholders seçenekleri: "Son Kullanıcı (Alıcı)" | "Satıcı / Tedarikçi" | "Operasyon Ekibi" | "Müşteri Hizmetleri" | "Finans / Muhasebe" | "Pazarlama" | "Teknoloji / Geliştirici" | "Üst Yönetim" | "İç Paydaşlar (Tümü)" | "Dış Paydaşlar (Tümü)"
+
+platform seçenekleri: "Tüm Platformlar" | "Web" | "iOS" | "Android" | "Mobil Web" | "Back-Office / Admin Panel" | "API / Entegrasyon"
+
+stakeholder_touchpoint seçenekleri: "Ürün Detay Sayfası" | "Sepet & Ödeme Akışı" | "Arama & Kategori Listesi" | "Ana Sayfa & Banner" | "Satıcı Paneli" | "Sipariş Yönetimi" | "Kargo & Teslimat" | "İade & İptal Akışı" | "Bildirim & E-posta" | "Müşteri Hizmetleri Arayüzü" | "Raporlama & Analitik" | "Diğer"
+
+how_stakeholders_affected seçenekleri: "Kullanıcı Deneyimi İyileşir" | "İşlem Süresi Kısalır" | "Hata Oranı Düşer" | "Gelir Artar" | "Maliyet Düşer" | "Yeni Özellik / Kapasite Kazanılır" | "Mevcut Sorun Giderilir" | "Risk Azalır" | "Uyumluluk Sağlanır"
+
+demand_category seçenekleri: "Yeni Özellik Geliştirme" | "Mevcut Özellik İyileştirme" | "Hata Düzeltme" | "Teknik Borç" | "Entegrasyon" | "Altyapı / Platform" | "Güvenlik" | "Performans" | "UX / Tasarım" | "Veri & Raporlama" | "Regülasyon / Uyumluluk"
+
+demand_trigger seçenekleri: "Müşteri Geri Bildirimi" | "Satıcı Talebi" | "İş Stratejisi" | "Rekabet Analizi" | "Yasal / Regülatif Zorunluluk" | "Teknik Borç / Altyapı İhtiyacı" | "Operasyonel Süreç İyileştirme" | "Veri / Analitik Bulgusu" | "Mevcut Hata / Sorun" | "Üst Yönetim Kararı"
+
+confidence seçenekleri: "High" | "Medium" | "Low"
+demand_size seçenekleri: "S" | "M" | "L" | "XL"
+show_on_timeline seçenekleri: "Evet" | "Hayır"
 
 Aşağıdaki JSON şemasına birebir uyumlu çıktı üret:
 {
@@ -212,27 +252,27 @@ Aşağıdaki JSON şemasına birebir uyumlu çıktı üret:
   "labels": ["otomasyon_ai"],
   "genel": {
     "summary": "...",
-    "business_goal": "...",
+    "business_goal": "<yukarıdaki listeden birini seç>",
     "business_goal_detail": "...",
     "as_is": "...",
-    "impacted_stakeholders": "...",
-    "platform": "Tüm Platformlar",
+    "impacted_stakeholders": "<yukarıdaki listeden birini seç>",
+    "platform": "<yukarıdaki listeden birini seç>",
     "product_area": "...",
-    "stakeholder_touchpoint": "...",
-    "stakeholder_touchpoint_other": "...",
-    "how_stakeholders_affected": "...",
-    "demand_category": "...",
+    "stakeholder_touchpoint": "<yukarıdaki listeden birini seç>",
+    "stakeholder_touchpoint_other": "",
+    "how_stakeholders_affected": "<yukarıdaki listeden birini seç>",
+    "demand_category": "<yukarıdaki listeden birini seç>",
     "to_be": "...",
-    "demand_trigger": "...",
+    "demand_trigger": "<yukarıdaki listeden birini seç>",
     "acceptance_criteria": "1. ...\\n2. ...\\n3. ...",
     "urgency_timing": "...",
     "dependent_internal_systems": "...",
     "dependent_external_systems": "...",
     "el_comment": "...",
     "expected_output_value": "...",
-    "confidence": "High",
-    "demand_size": "L",
-    "show_on_timeline": "Evet"
+    "confidence": "<High|Medium|Low>",
+    "demand_size": "<S|M|L|XL>",
+    "show_on_timeline": "<Evet|Hayır>"
   },
   "etki_kapsami": {
     "scope_channel": "...",
@@ -251,67 +291,103 @@ Aşağıdaki JSON şemasına birebir uyumlu çıktı üret:
 }
 `;
 
-    const apiKey = envConfig.gemini.apiKey;
-    const model = envConfig.gemini.model;
+    const parts = [{ text: prompt }, ...buildImageParts(imageFile ? [imageFile] : [])];
+    const parsedJson = await geminiApiClient.generateJson(parts, 'IPK Demand');
 
-    if (!apiKey || apiKey.includes('your_gemini_api_key_here')) {
-      throw new Error('Gemini API Anahtarı eksik veya geçersiz.');
-    }
+    return {
+      storyKey: formattedKey || null,
+      mode,
+      teamName,
+      data: parsedJson,
+    };
+  },
 
-    const parts = [{ text: prompt }];
-    if (imageFile && imageFile.base64) {
-      parts.push({
-        inlineData: {
-          mimeType: imageFile.mimeType || 'image/png',
-          data: imageFile.base64
-        }
-      });
-    }
+  /**
+   * Generates a Jira User Story from description and uploaded images.
+   * @param {Object} params
+   * @returns {Promise<Object>}
+   */
+  async generateStoryDetails({ description = '', teamName = 'Search', images = [], files = [] }) {
+    const fileListText = files.length > 0
+      ? `\nEkli Dokümanlar: ${files.map((f) => f.name).join(', ')}`
+      : '';
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts
-          }
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json'
-        }
-      })
-    });
+    const prompt = `
+Sen kıdemli bir Agile Product Owner ve Kıdemli QA/İş Analistisin. 
+Aşağıda verilen talep/ihtiyaç açıklaması, ekli dokümanlar ve varsa yüklenen UI mockup / ekran görüntüsü / akış şemalarını detaylıca analiz ederek Jira'da açılabilecek profesyonel bir "Story" hazırla.
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API Hatası: ${response.status} - ${errText}`);
-    }
+Talep Açıklaması:
+${description || 'Görseller ve dokümanlar incelenerek story oluşturulacak.'}
+Takım: ${teamName}
+${fileListText}
+${images.length > 0 ? `DİKKAT: Kullanıcı ${images.length} adet ekran görüntüsü / tasarım / mockup yükledi. Görsellerdeki form alanlarını, butonları, akış adımlarını, olası validasyonları ve arayüz detaylarını dikkatle inceleyerek kullanıcı hikayesi ve kabul kriterlerine yansıt!` : ''}
 
-    const data = await response.json();
-    const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+Çıktıyı KESİNLİKLE aşağıdaki JSON şemasına birebir uyumlu olarak döndür. Başka hiçbir markdown veya açıklama yazma:
+{
+  "summary": "Kısa, net ve profesyonel Story Başlığı (Örn: [Search] Ürün Arama Filtrelerinde Çoklu Marka Seçimi ve Fiyat Aralığı Desteği)",
+  "userStory": "As a [kullanıcı tipi / paydaş],\\nI want to [yapılmak istenen eylem],\\nSo that [elde edilecek iş faydası/değer].",
+  "background": "Geliştirmenin arka planı, mevcut durum ve neden bu geliştirmeye ihtiyaç duyulduğu.",
+  "acceptanceCriteria": [
+    "Kabul kriteri 1",
+    "Kabul kriteri 2",
+    "Kabul kriteri 3"
+  ],
+  "technicalNotes": "Teknik notlar ve bağımlılıklar."
+}
+`;
 
-    if (!resultText) {
-      throw new Error('Gemini boş bir sonuç döndürdü.');
-    }
+    const parts = [{ text: prompt }, ...buildImageParts(images)];
+    return await geminiApiClient.generateJson(parts, 'Story');
+  },
 
-    try {
-      const cleanText = resultText.replace(/```json/gi, '').replace(/```/gi, '').trim();
-      const parsedJson = JSON.parse(cleanText);
+  /**
+   * Generates structured Bug or Issue details from user notes and screenshots.
+   * @param {Object} params
+   * @returns {Promise<Object>}
+   */
+  async generateBugOrIssueDetails({
+    type = 'bug',
+    notes = '',
+    storyKey = '',
+    storyData = null,
+    teamName = 'Search',
+    images = [],
+  }) {
+    const isIssue = type === 'issue';
+    const storyContext = storyData
+      ? `Bağlı Story: ${storyData.key} - ${storyData.summary}\nStory Açıklaması: ${storyData.description || 'Yok'}`
+      : storyKey
+      ? `Bağlı Story No: ${storyKey}`
+      : '';
 
-      return {
-        storyKey: formattedKey || null,
-        mode,
-        teamName,
-        data: parsedJson
-      };
-    } catch (e) {
-      console.error('IPK Gemini JSON Parse Hatası:', resultText);
-      throw new Error('Gemini geçerli IPK JSON şemasında yanıt vermedi. Lütfen tekrar deneyin.');
-    }
-  }
+    const prompt = `
+Sen kıdemli bir QA Test Mühendisi ve Hata Takip Uzmanısın.
+Kullanıcı Jira'da ${isIssue ? 'bir Story\'e bağlı "Issue / Görev / QA Bulgusu"' : 'bağımsız bir "Bug / Hata Kaydı"'} oluşturmak istiyor.
+
+Kullanıcının Girdiği Notlar (Zorunlu Hata/Sorun Tanımı):
+"${notes}"
+
+${storyContext ? `\nStory Bağlantı Detayı:\n${storyContext}\n` : ''}
+Takım: ${teamName}
+${images.length > 0 ? `DİKKAT: Kullanıcı ${images.length} adet ekran görüntüsü / hata görseli / log yükledi. Görsellerdeki hata mesajlarını, UI kaymalarını, butonları veya sistem uyarılarını detayla inceleyerek hata kaydına entegre et!` : ''}
+
+Lütfen bu girdileri inceleyerek Jira için profesyonel bir Hata Kaydı (Bug / Issue) formatı hazırla.
+Çıktıyı KESİNLİKLE aşağıdaki JSON şemasına birebir uyumlu olarak döndür. Başka hiçbir markdown veya açıklama yazma:
+{
+  "summary": "[${isIssue ? 'ISSUE' : 'BUG'}] [${teamName}] Kısa, net ve açıklayıcı hata başlığı",
+  "stepsToReproduce": [
+    "Adım 1: ...",
+    "Adım 2: ...",
+    "Adım 3: ..."
+  ],
+  "expectedResult": "Beklenen sonuç.",
+  "actualResult": "Gerçekleşen hatalı durum.",
+  "environment": "Web / Mobile App / API",
+  "severity": "Major"
+}
+`;
+
+    const parts = [{ text: prompt }, ...buildImageParts(images)];
+    return await geminiApiClient.generateJson(parts, 'Bug/Issue');
+  },
 };
-
-

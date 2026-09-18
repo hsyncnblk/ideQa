@@ -3,28 +3,35 @@ import {
   X, 
   Sparkles, 
   Send, 
-  RotateCcw, 
-  CheckCircle2,
+  RotateCcw,
+  Code2,
   Layers,
   ArrowRight
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { geminiService } from '../../services/geminiService';
+import { jiraService } from '../../services/jiraService';
 import SubtaskConfigStep from './SubtaskConfigStep';
 import PlatformTabsPreview from './PlatformTabsPreview';
 import GeminiLoading from './GeminiLoading';
+
+import DevSubtaskLoading from './DevSubtaskLoading';
 
 export default function SubtaskDrawer({ 
   isOpen, 
   onClose, 
   selectedTeam, 
   onSubtaskCreated,
-  isCreatingSubtask 
+  isCreatingSubtask,
+  mode = 'test' // 'test' | 'dev'
 }) {
+  const isDevMode = mode === 'dev';
+
   // Aşama 1: Konfigürasyon Durumları
   const [storyKey, setStoryKey] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState(['FE', 'BE']);
   const [extraGuidance, setExtraGuidance] = useState('');
+  const [customImage, setCustomImage] = useState(null);
   const [inputError, setInputError] = useState('');
 
   // Aşama 2: Üretim ve Düzenleme Durumları
@@ -32,6 +39,35 @@ export default function SubtaskDrawer({
   const [generatedResult, setGeneratedResult] = useState(null);
 
   if (!isOpen) return null;
+
+  const handleCustomImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setInputError('Görsel boyutu maksimum 5 MB olabilir.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64Data = reader.result.split(',')[1];
+      setCustomImage({
+        name: file.name,
+        mimeType: file.type || 'image/png',
+        base64: base64Data,
+        previewUrl: URL.createObjectURL(file),
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveCustomImage = () => {
+    if (customImage?.previewUrl) {
+      URL.revokeObjectURL(customImage.previewUrl);
+    }
+    setCustomImage(null);
+  };
 
   // Platform seçim toggle
   const handleTogglePlatform = (platformId) => {
@@ -45,7 +81,7 @@ export default function SubtaskDrawer({
     });
   };
 
-  // Gemini Senaryo Üretimi
+  // Ana aksiyon: Test modda Gemini, Dev modda direkt Jira'ya gönder
   const handleGenerate = async () => {
     const cleanKey = storyKey.trim().toUpperCase();
 
@@ -69,16 +105,36 @@ export default function SubtaskDrawer({
     setGeneratedResult(null);
 
     try {
-      const result = await geminiService.generatePlatformScenarios({
-        storyKey: cleanKey,
-        platforms: selectedPlatforms,
-        extraGuidance,
-        teamName: selectedTeam,
-      });
-
-      setGeneratedResult(result);
+      if (isDevMode) {
+        // Dev modda: sadece story bilgisini Jira'dan çek, senaryo üretme, direkt oluştur
+        const [storyInfo] = await Promise.all([
+          jiraService.fetchStory(cleanKey),
+          new Promise((resolve) => setTimeout(resolve, 1400)),
+        ]);
+        confetti({ particleCount: 70, spread: 75, origin: { y: 0.85 } });
+        await onSubtaskCreated({
+          storyKey: cleanKey,
+          storySummary: storyInfo.summary,
+          platforms: selectedPlatforms,
+          scenarios: {},
+          team: selectedTeam,
+          isDevMode: true,
+        });
+        handleReset();
+        onClose();
+      } else {
+        // Test modda: Gemini ile senaryo üret (Jira ekli görselleri + kullanıcının eklediği görseli analiz eder)
+        const result = await geminiService.generatePlatformScenarios({
+          storyKey: cleanKey,
+          platforms: selectedPlatforms,
+          extraGuidance,
+          teamName: selectedTeam,
+          customImage,
+        });
+        setGeneratedResult(result);
+      }
     } catch (err) {
-      setInputError(err.message || 'Senaryo üretilirken bir hata oluştu, lütfen tekrar deneyin.');
+      setInputError(err.message || 'Bir hata oluştu, lütfen tekrar deneyin.');
     } finally {
       setIsGenerating(false);
     }
@@ -164,6 +220,10 @@ export default function SubtaskDrawer({
     setStoryKey('');
     setSelectedPlatforms(['FE', 'BE']);
     setExtraGuidance('');
+    if (customImage?.previewUrl) {
+      URL.revokeObjectURL(customImage.previewUrl);
+    }
+    setCustomImage(null);
     setInputError('');
     setIsGenerating(false);
     setGeneratedResult(null);
@@ -192,15 +252,17 @@ export default function SubtaskDrawer({
           {/* Drawer Başlık */}
           <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg jira-gradient-bg flex items-center justify-center text-white shadow-2xs">
-                <Sparkles className="w-4 h-4 text-amber-300" />
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-2xs ${isDevMode ? 'bg-gradient-to-br from-violet-600 to-indigo-700' : 'jira-gradient-bg'}`}>
+                {isDevMode ? <Code2 className="w-4 h-4 text-violet-200" /> : <Sparkles className="w-4 h-4 text-amber-300" />}
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  Story'e Subtask Test Oluştur
+                  {isDevMode ? "Story'e Dev Subtask Oluştur" : "Story'e Test Subtask Oluştur"}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Platforma özgü (App, BE, FE) test senaryoları ve otomatik Jira Subtask'ları
+                  {isDevMode
+                    ? "Yazılımcılar için platforma özgü (App, BE, FE) boş Jira Subtask'ları"
+                    : "Platforma özgü (App, BE, FE) test senaryoları ve otomatik Jira Subtask'ları"}
                 </p>
               </div>
             </div>
@@ -237,17 +299,28 @@ export default function SubtaskDrawer({
                 onStoryKeyChange={setStoryKey}
                 selectedPlatforms={selectedPlatforms}
                 onTogglePlatform={handleTogglePlatform}
-                extraGuidance={extraGuidance}
-                onExtraGuidanceChange={setExtraGuidance}
+                extraGuidance={isDevMode ? null : extraGuidance}
+                onExtraGuidanceChange={isDevMode ? null : setExtraGuidance}
+                customImage={customImage}
+                onCustomImageChange={handleCustomImageChange}
+                onRemoveCustomImage={handleRemoveCustomImage}
                 inputError={inputError}
                 onGenerate={handleGenerate}
                 isGenerating={isGenerating}
+                isDevMode={isDevMode}
               />
             )}
 
             {/* 2. ADIM: YÜKLENİYOR SİMÜLASYONU */}
             {isGenerating && (
-              <GeminiLoading storyKey={storyKey.toUpperCase()} />
+              isDevMode ? (
+                <DevSubtaskLoading 
+                  storyKey={storyKey.toUpperCase()} 
+                  selectedPlatforms={selectedPlatforms}
+                />
+              ) : (
+                <GeminiLoading storyKey={storyKey.toUpperCase()} />
+              )
             )}
 
             {/* 3. ADIM: DÜZENLENEBİLİR PLATFORM SEKMELERİ VE SENARYOLAR */}
@@ -265,38 +338,47 @@ export default function SubtaskDrawer({
 
           {/* Drawer Alt Şerit: JİRA'YA AKTARIM */}
           <div className="p-5 bg-slate-50 border-t border-slate-200 space-y-2.5">
-            <button
-              type="button"
-              onClick={handleExportToJira}
-              disabled={!generatedResult || activeExportCount === 0 || isCreatingSubtask}
-              className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                generatedResult && activeExportCount > 0 && !isCreatingSubtask
-                  ? 'jira-gradient-bg text-white shadow-md shadow-jira-600/25 hover:shadow-jira-600/35 hover:brightness-105 active:scale-[0.99] cursor-pointer'
-                  : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
-              }`}
-            >
-              {isCreatingSubtask ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>{activeExportCount} Adet Jira Subtask Oluşturuluyor...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  <span>
-                    {generatedResult && activeExportCount > 0
-                      ? `Seçili Senaryoları Jira'ya Gönder (${activeExportCount} Subtask)`
-                      : "Seçili Senaryoları Jira'ya Gönder"}
-                  </span>
-                </>
-              )}
-            </button>
-
-            <p className="text-[11px] text-center text-slate-500">
-              {generatedResult
-                ? `Her platform için "Test [Platform] - ${generatedResult.storyKey}" adıyla ayrı subtask oluşturulacaktır.`
-                : 'Önce Story No ve Platformları seçip Gemini ile senaryo üretmelisiniz.'}
-            </p>
+            {/* Dev modda direkt oluştur butonu konfigürasyon ekranında handleGenerate'e bağlı, bu alan sadece Test modunda görünür */}
+            {!isDevMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleExportToJira}
+                  disabled={!generatedResult || activeExportCount === 0 || isCreatingSubtask}
+                  className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                    generatedResult && activeExportCount > 0 && !isCreatingSubtask
+                      ? 'jira-gradient-bg text-white shadow-md shadow-jira-600/25 hover:shadow-jira-600/35 hover:brightness-105 active:scale-[0.99] cursor-pointer'
+                      : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                  }`}
+                >
+                  {isCreatingSubtask ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>{activeExportCount} Adet Jira Subtask Oluşturuluyor...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>
+                        {generatedResult && activeExportCount > 0
+                          ? `Seçili Senaryoları Jira'ya Gönder (${activeExportCount} Subtask)`
+                          : "Seçili Senaryoları Jira'ya Gönder"}
+                      </span>
+                    </>
+                  )}
+                </button>
+                <p className="text-[11px] text-center text-slate-500">
+                  {generatedResult
+                    ? `Her platform için "[Platform] - Ana Story Konusu" adıyla ayrı subtask oluşturulacaktır.`
+                    : 'Önce Story No ve Platformları seçip Gemini ile senaryo üretmelisiniz.'}
+                </p>
+              </>
+            )}
+            {isDevMode && (
+              <p className="text-[11px] text-center text-slate-500">
+                Story No girip platforma seçtikten sonra "Subtask Oluştur" butonuna basın.
+              </p>
+            )}
           </div>
 
         </div>

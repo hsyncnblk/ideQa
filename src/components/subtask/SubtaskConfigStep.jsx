@@ -7,6 +7,7 @@ import {
   Server, 
   Globe, 
   Check,
+  Code2,
   FileText
 } from 'lucide-react';
 import { SAMPLE_STORIES } from '../../constants/jiraConstants';
@@ -24,9 +25,13 @@ export default function SubtaskConfigStep({
   onTogglePlatform,
   extraGuidance,
   onExtraGuidanceChange,
+  customImage = null,
+  onCustomImageChange,
+  onRemoveCustomImage,
   inputError,
   onGenerate,
   isGenerating,
+  isDevMode = false,
 }) {
   const handleQuickPick = (key) => {
     onStoryKeyChange(key);
@@ -143,19 +148,76 @@ export default function SubtaskConfigStep({
         </div>
       </div>
 
-      {/* 3. Ek Yönlendirme (Opsiyonel) */}
-      <div className="space-y-1.5">
-        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-          3. Ek Yönlendirme <span className="text-slate-400 font-normal lowercase">(opsiyonel)</span>
-        </label>
-        <textarea
-          rows={3}
-          value={extraGuidance}
-          onChange={(e) => onExtraGuidanceChange(e.target.value)}
-          placeholder="Örn: Playwright ile yazılacak, sadece edge case'ler ve güvenlik açıkları odaklansın, RestAssured JSONPath doğrulansın..."
-          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 focus:border-jira-500 focus:ring-jira-100 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all resize-none"
-        />
-      </div>
+      {/* 3. Ek Yönlendirme & Ekran Görüntüsü / Tasarım Yükleme (Opsiyonel) */}
+      {!isDevMode && (
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+              3. Ek Yönlendirme <span className="text-slate-400 font-normal lowercase">(opsiyonel)</span>
+            </label>
+            <textarea
+              rows={3}
+              value={extraGuidance || ''}
+              onChange={(e) => onExtraGuidanceChange && onExtraGuidanceChange(e.target.value)}
+              placeholder="Örn: Playwright ile yazılacak, sadece edge case'ler ve güvenlik açıkları odaklansın, RestAssured JSONPath doğrulansın..."
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 focus:border-jira-500 focus:ring-jira-100 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all resize-none"
+            />
+          </div>
+
+          {/* İsteğe Bağlı Ekran Görüntüsü / Tasarım Yükleme */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <span>Ek Görsel / Tasarım (Opsiyonel)</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-normal">
+                  AI Görsel Analizi
+                </span>
+              </label>
+              <span className="text-[10px] text-slate-400">Jira ekleri de taranır</span>
+            </div>
+
+            {!customImage ? (
+              <label className="border border-dashed border-slate-300 hover:border-jira-500 bg-white hover:bg-jira-50/20 p-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all">
+                <FileText className="w-4 h-4 text-jira-600" />
+                <span className="text-xs font-semibold text-slate-700">
+                  Ekran görüntüsü / mockup yükle (PNG, JPG, WEBP)
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={onCustomImageChange}
+                  className="hidden"
+                />
+              </label>
+            ) : (
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <img
+                    src={customImage.previewUrl}
+                    alt="Yüklenen Görsel"
+                    className="w-9 h-9 rounded-lg object-cover border border-slate-200"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-slate-800 truncate max-w-[220px]">
+                      {customImage.name}
+                    </div>
+                    <div className="text-[10px] text-emerald-600 font-medium">
+                      Gemini Vision analizine dahil edilecek
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onRemoveCustomImage}
+                  className="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 rounded hover:bg-rose-50 cursor-pointer"
+                >
+                  Kaldır
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Aksiyon Butonu */}
       <div className="pt-2">
@@ -163,10 +225,17 @@ export default function SubtaskConfigStep({
           type="button"
           onClick={onGenerate}
           disabled={isGenerating || !storyKey.trim() || selectedPlatforms.length === 0}
-          className="w-full py-3.5 px-4 rounded-xl ai-gradient-bg text-white font-bold text-sm shadow-md shadow-purple-600/20 hover:shadow-purple-600/30 hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`w-full py-3.5 px-4 rounded-xl text-white font-bold text-sm shadow-md hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed ${
+            isDevMode
+              ? 'bg-gradient-to-r from-violet-600 to-indigo-700 shadow-indigo-600/20 hover:shadow-indigo-600/30'
+              : 'ai-gradient-bg shadow-purple-600/20 hover:shadow-purple-600/30'
+          }`}
         >
-          <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
-          <span>Gemini ile Senaryo Üret</span>
+          {isDevMode
+            ? <Code2 className="w-4 h-4 text-violet-200 group-hover:scale-110 transition-transform" />
+            : <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
+          }
+          <span>{isDevMode ? 'Subtask Oluştur' : 'Gemini ile Senaryo Üret'}</span>
           <ArrowRight className="w-4 h-4 ml-0.5 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>

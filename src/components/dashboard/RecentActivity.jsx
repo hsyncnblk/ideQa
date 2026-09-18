@@ -1,25 +1,25 @@
 import React from 'react';
-import { 
-  CheckCircle2, 
-  ExternalLink, 
-  Tag, 
-  Users, 
-  Layers, 
-  GitPullRequest 
+import {
+  CheckCircle2,
+  ExternalLink,
+  Tag,
+  Users,
+  Layers,
+  GitPullRequest
 } from 'lucide-react';
 
 export default function RecentActivity({ subtasks, onSelectSubtask }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
-      
+
       {/* Bölüm Başlığı */}
       <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-bold text-slate-900">
-            Son Oluşturulan Subtask'lar
+            Son Kayıtlar
           </h3>
           <p className="text-xs text-slate-400">
-            Jira senkronizasyonu tamamlanan test kayıtları
+            Son {subtasks.length} kayıt (yenilemede korunur)
           </p>
         </div>
 
@@ -37,7 +37,7 @@ export default function RecentActivity({ subtasks, onSelectSubtask }) {
           </div>
         ) : (
           subtasks.map((task) => (
-            <div 
+            <div
               key={task.id}
               className="p-4 sm:px-5 hover:bg-slate-50/70 transition-colors flex items-center justify-between gap-4"
             >

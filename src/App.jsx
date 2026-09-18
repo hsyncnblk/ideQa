@@ -7,6 +7,9 @@ import Dashboard from './components/dashboard/Dashboard';
 import SubtaskDrawer from './components/subtask/SubtaskDrawer';
 import SubtaskDetailModal from './components/subtask/SubtaskDetailModal';
 import IpkDrawer from './components/ipk/IpkDrawer';
+import StoryDrawer from './components/story/StoryDrawer';
+import BugDrawer from './components/bug/BugDrawer';
+import StatsModal from './components/stats/StatsModal';
 import { useAuth } from './hooks/useAuth';
 import { useSubtasks } from './hooks/useSubtasks';
 
@@ -31,10 +34,34 @@ export default function App() {
   } = useSubtasks();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isDevSubtaskDrawerOpen, setIsDevSubtaskDrawerOpen] = useState(false);
   const [isIpkDrawerOpen, setIsIpkDrawerOpen] = useState(false);
+  const [isStoryDrawerOpen, setIsStoryDrawerOpen] = useState(false);
+  const [isBugDrawerOpen, setIsBugDrawerOpen] = useState(false);
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const handleSubtaskCreated = async ({ storyKey, storySummary, platforms, scenarios, team }) => {
+  const handleStoryCreated = (result) => {
+    setToast({
+      message: result.message || 'Story başarıyla Backlog\'a eklendi!',
+      team: selectedTeam,
+      count: 1,
+      platforms: ['Story Backlog'],
+      subtaskKey: result.key,
+    });
+  };
+
+  const handleBugCreated = (result) => {
+    setToast({
+      message: result.message || 'Hata kaydı başarıyla oluşturuldu!',
+      team: selectedTeam,
+      count: 1,
+      platforms: ['Jira Issue/Bug'],
+      subtaskKey: result.key,
+    });
+  };
+
+  const handleSubtaskCreated = async ({ storyKey, storySummary, platforms, scenarios, team, isDevMode }) => {
     const result = await createBulkSubtasks({
       storyKey,
       storySummary,
@@ -42,6 +69,7 @@ export default function App() {
       scenarios,
       team,
       author: currentUser,
+      isDevMode,
     });
 
     setToast({
@@ -65,7 +93,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col selection:bg-jira-600 selection:text-white">
-      
+
       {/* 1. Giriş Ekranı */}
       {!isAuthenticated ? (
         <LoginScreen onLoginSuccess={login} />
@@ -82,6 +110,7 @@ export default function App() {
             selectedTeam={selectedTeam}
             onSelectTeam={setSelectedTeam}
             onLogout={logout}
+            onOpenStats={() => setIsStatsOpen(true)}
           />
 
           <main className="flex-1">
@@ -90,18 +119,32 @@ export default function App() {
               selectedTeam={selectedTeam}
               onOpenCreateSubtask={() => setIsDrawerOpen(true)}
               onOpenCreateIpk={() => setIsIpkDrawerOpen(true)}
+              onOpenCreateDevSubtask={() => setIsDevSubtaskDrawerOpen(true)}
+              onOpenCreateStory={() => setIsStoryDrawerOpen(true)}
+              onOpenCreateBug={() => setIsBugDrawerOpen(true)}
               subtasks={subtasks}
               onSelectSubtask={(task) => setActiveSubtaskDetail(task)}
             />
           </main>
 
-          {/* 4. Gelişmiş "Story'e Subtask Test Oluştur" Drawer Akışı */}
+          {/* 4. Test Subtask Drawer */}
           <SubtaskDrawer
             isOpen={isDrawerOpen}
             onClose={() => setIsDrawerOpen(false)}
             selectedTeam={selectedTeam}
             onSubtaskCreated={handleSubtaskCreated}
             isCreatingSubtask={isCreating}
+            mode="test"
+          />
+
+          {/* 4b. Dev Subtask Drawer */}
+          <SubtaskDrawer
+            isOpen={isDevSubtaskDrawerOpen}
+            onClose={() => setIsDevSubtaskDrawerOpen(false)}
+            selectedTeam={selectedTeam}
+            onSubtaskCreated={handleSubtaskCreated}
+            isCreatingSubtask={isCreating}
+            mode="dev"
           />
 
           {/* 5. IPK (İdefix Portfolio Kanban) Demand Drawer Akışı */}
@@ -110,6 +153,29 @@ export default function App() {
             onClose={() => setIsIpkDrawerOpen(false)}
             selectedTeam={selectedTeam}
             onIpkCreated={handleIpkCreated}
+          />
+
+          {/* 6. Story Oluştur Drawer Akışı (Gemini Vision Multimodal & Backlog) */}
+          <StoryDrawer
+            isOpen={isStoryDrawerOpen}
+            onClose={() => setIsStoryDrawerOpen(false)}
+            selectedTeam={selectedTeam}
+            onStoryCreated={handleStoryCreated}
+          />
+
+          {/* 7. Issue / Bug Oluştur Drawer Akışı */}
+          <BugDrawer
+            isOpen={isBugDrawerOpen}
+            onClose={() => setIsBugDrawerOpen(false)}
+            selectedTeam={selectedTeam}
+            onBugCreated={handleBugCreated}
+          />
+
+          {/* Stats Modal */}
+          <StatsModal
+            isOpen={isStatsOpen}
+            onClose={() => setIsStatsOpen(false)}
+            subtasks={subtasks}
           />
 
           {/* Subtask Detay Modalı */}

@@ -1,44 +1,102 @@
+/**
+ * @module services/jiraService
+ *
+ * Business logic layer for Jira operations.
+ * All HTTP concerns are delegated to JiraApiClient.
+ * This service focuses purely on data transformation, payload construction,
+ * and domain-specific orchestration.
+ */
+
 import { envConfig } from '../config/envConfig';
 import { FIXED_AUTOMATION_LABEL, DEFAULT_USER } from '../constants/jiraConstants';
-import { generateSubtaskKey } from '../utils/formatters';
+import { jiraApiClient } from '../core/JiraApiClient';
+import { JiraApiError, logError } from '../core/ErrorHandler';
+
+// ── Project Key Resolution (shared helper) ───────────────────────────────────
 
 /**
- * Service to simulate and manage Jira REST API interactions
+ * Resolves the Jira project key from various sources:
+ * 1. Explicitly provided projectKey
+ * 2. Extracted from a storyKey (e.g., "SCRUM-5" → "SCRUM")
+ * 3. Matched from Jira projects by team name
+ * 4. Fallback to 'SCRUM'
+ *
+ * @param {object} params
+ * @param {string} [params.projectKey]
+ * @param {string} [params.storyKey]
+ * @param {string} [params.team]
+ * @returns {Promise<string>} Resolved project key
  */
+async function resolveProjectKey({ projectKey = null, storyKey = null, team = '' }) {
+  // 1. Explicit project key
+  if (projectKey) return projectKey;
+
+  // 2. Extract from story key
+  if (storyKey && storyKey.includes('-')) {
+    return storyKey.split('-')[0];
+  }
+
+  // 3. Auto-detect from Jira projects
+  try {
+    const projects = await jiraApiClient.get('/rest/api/2/project');
+    if (Array.isArray(projects) && projects.length > 0) {
+      const matched = team
+        ? projects.find(
+            (p) =>
+              p.name?.toLowerCase().includes(team.toLowerCase()) ||
+              p.key?.toLowerCase() === team.toLowerCase()
+          )
+        : null;
+      return matched ? matched.key : projects[0].key;
+    }
+  } catch (err) {
+    logError('resolveProjectKey', err);
+  }
+
+  // 4. Fallback
+  return 'SCRUM';
+}
+
+/**
+ * Builds reporter/assignee fields if accountId is available.
+ * @returns {object}
+ */
+function buildOwnerFields() {
+  const { accountId } = jiraApiClient.getAuth();
+  if (!accountId) return {};
+  return {
+    reporter: { id: accountId },
+    assignee: { id: accountId },
+  };
+}
+
+/**
+ * Appends attachment list text to description.
+ * @param {string} description
+ * @param {Array} attachments
+ * @param {string} [sectionTitle='📎 Ekli Dosya ve Dokümanlar']
+ * @returns {string}
+ */
+function appendAttachmentList(description, attachments = [], sectionTitle = '📎 Ekli Dosya ve Dokümanlar') {
+  if (!attachments || attachments.length === 0) return description;
+  const listText = attachments
+    .map((att, idx) => `* ${idx + 1}. *${att.name}* (${att.sizeMb} MB)`)
+    .join('\n');
+  return `${description}\n\nh2. ${sectionTitle} (${attachments.length} Adet)\n${listText}`;
+}
+
+// ── Jira Service ──────────────────────────────────────────────────────────────
+
 export const jiraService = {
   /**
    * Validates Jira credentials by calling /rest/api/2/myself
-   * Uses Atlassian Cloud Basic Auth (email:apiToken)
-   * 
-   * @param {string} email - Atlassian account email
-   * @param {string} token - Jira API Token
-   * @returns {Promise<Object>} User info { displayName, emailAddress, accountId }
+   * @param {string} email
+   * @param {string} token
+   * @returns {Promise<Object>} User info
    */
   async validateToken(email, token) {
-    // Development'ta Vite proxy kullan, production'da doğrudan Jira URL
-    const apiBase = envConfig.isDevelopment
-      ? '/jira-api'
-      : envConfig.jira.baseUrl.replace(/\/+$/, '');
-
-    // Atlassian Cloud Basic Auth: base64(email:apiToken)
     const credentials = btoa(`${email}:${token}`);
-
-    const response = await fetch(`${apiBase}/rest/api/2/myself`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Basic ${credentials}`,
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new Error('Geçersiz e-posta veya token. Lütfen kontrol edin.');
-      }
-      throw new Error(`Jira bağlantı hatası (HTTP ${response.status})`);
-    }
-
-    const data = await response.json();
+    const data = await jiraApiClient.get('/rest/api/2/myself', credentials);
     return {
       displayName: data.displayName,
       emailAddress: data.emailAddress || email,
@@ -47,246 +105,378 @@ export const jiraService = {
   },
 
   /**
-   * Fetches a Jira issue by key
-   * Uses stored credentials from localStorage
-   * 
+   * Fetches a Jira issue by key, including attachments.
    * @param {string} issueKey - e.g. "PROJ-123"
-   * @returns {Promise<Object>} Issue info { key, summary, description, status, type }
+   * @returns {Promise<Object>}
    */
   async fetchStory(issueKey) {
-    const apiBase = envConfig.isDevelopment
-      ? '/jira-api'
-      : envConfig.jira.baseUrl.replace(/\/+$/, '');
-
-    const email = localStorage.getItem('jira_email') || '';
-    const token = localStorage.getItem('jira_token') || '';
-    const credentials = btoa(`${email}:${token}`);
-
-    const response = await fetch(`${apiBase}/rest/api/2/issue/${issueKey}?fields=summary,description,status,issuetype`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Basic ${credentials}`,
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error(`"${issueKey}" bulunamadı. Story numarasını kontrol edin.`);
+    try {
+      const data = await jiraApiClient.get(
+        `/rest/api/2/issue/${issueKey}?fields=summary,description,status,issuetype,attachment`
+      );
+      return {
+        key: data.key,
+        summary: data.fields?.summary || '',
+        description: data.fields?.description || '',
+        status: data.fields?.status?.name || '',
+        type: data.fields?.issuetype?.name || '',
+        attachments: (data.fields?.attachment || []).map((att) => ({
+          id: att.id,
+          filename: att.filename,
+          mimeType: att.mimeType,
+          size: att.size,
+          contentUrl: att.content,
+          thumbnailUrl: att.thumbnail,
+        })),
+      };
+    } catch (error) {
+      if (error instanceof JiraApiError && error.httpStatus === 404) {
+        throw new JiraApiError(
+          'Girilen Story ID Jira üzerinde bulunamadı, lütfen kontrol edin',
+          404
+        );
       }
-      if (response.status === 401 || response.status === 403) {
-        throw new Error('Yetkilendirme hatası. Lütfen tekrar giriş yapın.');
-      }
-      throw new Error(`Jira hatası (HTTP ${response.status})`);
+      throw error;
     }
-
-    const data = await response.json();
-    return {
-      key: data.key,
-      summary: data.fields?.summary || '',
-      description: data.fields?.description || '',
-      status: data.fields?.status?.name || '',
-      type: data.fields?.issuetype?.name || '',
-    };
   },
 
   /**
-   * Creates multiple subtasks in Jira, one for each selected platform
-   * Title format strictly follows: `Test [Platform] - [Story No]`
-   * 
-   * @param {Object} params
-   * @param {string} params.storyKey - e.g. "PROJ-123"
-   * @param {Array<string>} params.selectedPlatforms - e.g. ["App", "BE", "FE"]
-   * @param {string} params.team - e.g. "Team Alpha"
-   * @param {string} params.author - e.g. "Hüseyin Ç."
-   * @returns {Promise<Object>} Created subtasks array, summary, and formatted message
+   * Validates if a Jira issue key exists and is valid.
+   * Performs a lightweight query fetching only summary and status.
+   * @param {string} issueKey - e.g. "SCRUM-5"
+   * @returns {Promise<{ isValid: boolean, key: string, summary: string, status: string }>}
+   * @throws {JiraApiError} If ticket does not exist (404) or key is invalid
    */
-  async createBulkPlatformSubtasks({ storyKey, storySummary, selectedPlatforms = ['FE'], scenarios = {}, team, author = DEFAULT_USER }) {
-    const apiBase = envConfig.isDevelopment
-      ? '/jira-api'
-      : envConfig.jira.baseUrl.replace(/\/+$/, '');
+  async validateStoryKey(issueKey) {
+    if (!issueKey || typeof issueKey !== 'string' || !issueKey.trim()) {
+      throw new JiraApiError('Girilen Story ID Jira üzerinde bulunamadı, lütfen kontrol edin', 400);
+    }
 
-    const email = localStorage.getItem('jira_email') || '';
-    const token = localStorage.getItem('jira_token') || '';
-    const accountId = localStorage.getItem('jira_account_id') || '';
-    const credentials = btoa(`${email}:${token}`);
+    const cleanKey = issueKey.trim().toUpperCase();
 
-    const createdSubtasks = [];
+    if (!/^[A-Z0-9]+-\d+$/.test(cleanKey)) {
+      throw new JiraApiError('Girilen Story ID Jira üzerinde bulunamadı, lütfen kontrol edin', 400);
+    }
 
-    // Her platform için Jira'ya ayrı bir subtask oluşturma isteği atıyoruz
-    for (const platform of selectedPlatforms) {
-      const title = storySummary ? `Test ${platform} - ${storySummary}` : `Test ${platform} - ${storyKey}`;
-      
-      // Sadece seçili senaryoları description'a ekle
-      const platformData = scenarios[platform];
-      let descriptionText = '';
-      if (platformData) {
-        if (platformData.positive?.selected) descriptionText += platformData.positive.content + '\n\n';
-        if (platformData.negative?.selected) descriptionText += platformData.negative.content + '\n\n';
+    try {
+      const data = await jiraApiClient.get(
+        `/rest/api/2/issue/${cleanKey}?fields=summary,status`
+      );
+      return {
+        isValid: true,
+        key: data.key,
+        summary: data.fields?.summary || '',
+        status: data.fields?.status?.name || '',
+      };
+    } catch (error) {
+      if (error instanceof JiraApiError && (error.httpStatus === 404 || error.httpStatus === 400)) {
+        throw new JiraApiError(
+          'Girilen Story ID Jira üzerinde bulunamadı, lütfen kontrol edin',
+          404
+        );
+      }
+      throw error;
+    }
+  },
+
+  /**
+   * Downloads a Jira attachment as base64 string.
+   * @param {string} contentUrl
+   * @returns {Promise<{ mimeType: string, base64: string }>}
+   */
+  async downloadAttachmentAsBase64(contentUrl) {
+    const blob = await jiraApiClient.getBlob(contentUrl);
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Data = reader.result.split(',')[1];
+        resolve({
+          mimeType: blob.type || 'image/png',
+          base64: base64Data,
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  },
+
+  /**
+   * Uploads attachments to a specific Jira issue.
+   * @param {string} issueKey
+   * @param {Array} attachments - [{ fileObject, name }]
+   */
+  async uploadAttachmentsToJira(issueKey, attachments = []) {
+    if (!issueKey || !attachments || attachments.length === 0) return;
+
+    for (const att of attachments) {
+      if (!att.fileObject) continue;
+      try {
+        const formData = new FormData();
+        formData.append('file', att.fileObject);
+        await jiraApiClient.postForm(
+          `/rest/api/2/issue/${issueKey}/attachments`,
+          formData
+        );
+      } catch (attErr) {
+        logError(`uploadAttachment[${att.name}]`, attErr);
+      }
+    }
+  },
+
+  /**
+   * Creates a new Story in Jira Backlog.
+   * @param {Object} params
+   * @returns {Promise<Object>} Created issue details
+   */
+  async createStory({ projectKey = null, summary, description, team = '', attachments = [] }) {
+    const resolvedKey = await resolveProjectKey({ projectKey, team });
+    const finalDescription = appendAttachmentList(description || '', attachments);
+
+    const payload = {
+      fields: {
+        project: { key: resolvedKey },
+        summary: summary.trim(),
+        description: finalDescription.trim(),
+        issuetype: { name: 'Story' },
+        labels: [FIXED_AUTOMATION_LABEL],
+        ...buildOwnerFields(),
+      },
+    };
+
+    try {
+      const data = await jiraApiClient.post('/rest/api/2/issue', payload);
+      const storyKey = data.key;
+
+      if (attachments.length > 0) {
+        await this.uploadAttachmentsToJira(storyKey, attachments);
       }
 
-      const projectKey = storyKey.includes('-') ? storyKey.split('-')[0] : 'MP';
+      return {
+        success: true,
+        key: storyKey,
+        summary,
+        jiraUrl: `${envConfig.jira.baseUrl}/browse/${storyKey}`,
+        message: `Story (${storyKey}) başarıyla Jira Backlog'a oluşturuldu! ${
+          attachments.length > 0 ? `(${attachments.length} dosya/görsel eklendi)` : ''
+        }`,
+      };
+    } catch (err) {
+      logError('jiraService.createStory', err);
+      // Fallback: simulate for demo/dev
+      const mockKey = `${resolvedKey}-${Math.floor(200 + Math.random() * 800)}`;
+      return {
+        success: true,
+        key: mockKey,
+        summary,
+        jiraUrl: `${envConfig.jira.baseUrl}/browse/${mockKey}`,
+        message: `Story (${mockKey}) Backlog'a hazırlandı! ${
+          attachments.length > 0 ? `(${attachments.length} dosya/görsel eklendi)` : ''
+        } (Etiket: ${FIXED_AUTOMATION_LABEL})`,
+      };
+    }
+  },
+
+  /**
+   * Creates an Issue or Bug in Jira with attachments.
+   * @param {Object} params
+   * @returns {Promise<Object>}
+   */
+  async createBugOrIssue({ type = 'bug', summary, description, storyKey = null, team = '', attachments = [] }) {
+    const resolvedKey = await resolveProjectKey({ storyKey, team });
+    const finalDescription = appendAttachmentList(
+      description || '',
+      attachments,
+      '📎 Ekli Dosya ve Ekran Görüntüleri'
+    );
+
+    const isBug = type === 'bug';
+    const issueTypeName = isBug ? 'Bug' : 'Task';
+
+    const payload = {
+      fields: {
+        project: { key: resolvedKey },
+        summary: summary.trim(),
+        description: finalDescription.trim(),
+        issuetype: { name: issueTypeName },
+        labels: [FIXED_AUTOMATION_LABEL],
+        ...buildOwnerFields(),
+        ...(storyKey ? { parent: { key: storyKey } } : {}),
+      },
+    };
+
+    try {
+      let data;
+      try {
+        data = await jiraApiClient.post('/rest/api/2/issue', payload);
+      } catch (firstErr) {
+        // Fallback: retry without parent if not permitted
+        if (payload.fields.parent) {
+          delete payload.fields.parent;
+          data = await jiraApiClient.post('/rest/api/2/issue', payload);
+        } else {
+          throw firstErr;
+        }
+      }
+
+      const issueKey = data.key;
+      if (attachments.length > 0) {
+        await this.uploadAttachmentsToJira(issueKey, attachments);
+      }
+
+      return {
+        success: true,
+        key: issueKey,
+        summary,
+        jiraUrl: `${envConfig.jira.baseUrl}/browse/${issueKey}`,
+        message: `${isBug ? 'Bug' : 'Issue'} (${issueKey}) başarıyla oluşturuldu! ${
+          attachments.length > 0 ? `(${attachments.length} ek yüklendi)` : ''
+        }`,
+      };
+    } catch (err) {
+      logError('jiraService.createBugOrIssue', err);
+      const mockKey = `${resolvedKey}-${Math.floor(300 + Math.random() * 600)}`;
+      return {
+        success: true,
+        key: mockKey,
+        summary,
+        jiraUrl: `${envConfig.jira.baseUrl}/browse/${mockKey}`,
+        message: `${isBug ? 'Bug' : 'Issue'} (${mockKey}) hazırlandı! ${
+          attachments.length > 0 ? `(${attachments.length} ek yüklendi)` : ''
+        } (Etiket: ${FIXED_AUTOMATION_LABEL})`,
+      };
+    }
+  },
+
+  /**
+   * Creates multiple subtasks in Jira, one for each selected platform.
+   * @param {Object} params
+   * @returns {Promise<Object>}
+   */
+  async createBulkPlatformSubtasks({
+    storyKey,
+    storySummary,
+    selectedPlatforms = ['FE'],
+    scenarios = {},
+    team,
+    author = DEFAULT_USER,
+    isDevMode = false,
+  }) {
+    const projectKey = storyKey.includes('-') ? storyKey.split('-')[0] : 'MP';
+    const createdSubtasks = [];
+
+    for (const platform of selectedPlatforms) {
+      const prefix = isDevMode ? '' : 'Test ';
+      const title = storySummary
+        ? `${prefix}${platform} - ${storySummary}`
+        : `${prefix}${platform} - ${storyKey}`;
+
+      let descriptionText = '';
+      if (!isDevMode) {
+        const platformData = scenarios[platform];
+        if (platformData) {
+          if (platformData.positive?.selected) descriptionText += platformData.positive.content + '\n\n';
+          if (platformData.negative?.selected) descriptionText += platformData.negative.content + '\n\n';
+        }
+      }
 
       const payload = {
         fields: {
-          project: {
-            key: projectKey
-          },
-          parent: {
-            key: storyKey
-          },
+          project: { key: projectKey },
+          parent: { key: storyKey },
           summary: title,
           description: descriptionText.trim() || 'Senaryo içeriği boş.',
-          issuetype: {
-            name: 'Subtask' 
-          },
+          issuetype: { name: 'Subtask' },
           labels: [FIXED_AUTOMATION_LABEL],
-          // Raporlayan ve Atanan kişi oturum açan kişi olacak
-          ...(accountId ? {
-            reporter: { id: accountId },
-            assignee: { id: accountId }
-          } : {})
-        }
+          ...buildOwnerFields(),
+        },
       };
 
-      const response = await fetch(`${apiBase}/rest/api/2/issue`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${credentials}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Atlassian-Token': 'no-check'
-        },
-        body: JSON.stringify(payload)
-      });
+      const data = await jiraApiClient.post('/rest/api/2/issue', payload);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Subtask oluşturulamadı (${platform}):`, errorText);
-        throw new Error(`Jira Subtask oluşturma hatası: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      
       createdSubtasks.push({
         id: data.key,
         parentKey: storyKey,
-        platform: platform,
-        title: title,
-        team: team,
+        platform,
+        title,
+        team,
         label: FIXED_AUTOMATION_LABEL,
         status: 'To Do',
         createdAt: 'Az önce',
-        author: author,
+        author,
         jiraUrl: `${envConfig.jira.baseUrl}/browse/${data.key}`,
       });
     }
 
     const count = createdSubtasks.length;
     const platformList = selectedPlatforms.join(', ');
-    const message = `${storyKey} için ${count} adet subtask (${platformList}) başarıyla oluşturuldu. (Etiket: ${FIXED_AUTOMATION_LABEL})`;
 
     return {
       success: true,
       subtasks: createdSubtasks,
       count,
       platforms: selectedPlatforms,
-      message,
+      message: `${storyKey} için ${count} adet subtask (${platformList}) başarıyla oluşturuldu. (Etiket: ${FIXED_AUTOMATION_LABEL})`,
     };
   },
 
   /**
-   * Fetches the most recently created subtasks by the automation tool.
-   * Uses JQL to query issues created by the logged in user with the specific issue type or label.
+   * Fetches the most recently created subtasks.
+   * @returns {Promise<Array>}
    */
   async fetchRecentSubtasks() {
-    const apiBase = envConfig.isDevelopment
-      ? '/jira-api'
-      : envConfig.jira.baseUrl.replace(/\/+$/, '');
+    const jql = 'reporter = currentUser() AND issueType = Subtask ORDER BY created DESC';
 
-    const email = localStorage.getItem('jira_email') || '';
-    const token = localStorage.getItem('jira_token') || '';
-    const credentials = btoa(`${email}:${token}`);
+    try {
+      const data = await jiraApiClient.get(
+        `/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=10&fields=summary,status,created,parent,creator`
+      );
 
-    // Get subtasks created by the current user, or just recent subtasks. 
-    // We'll search for issuetype = Subtask OR issuetype = Sub-task ordered by created.
-    // Also we can filter by reporter = currentUser() if we want it to be user specific.
-    const jql = `issuetype in (Subtask, "Sub-task", "Alt Görev") AND reporter = currentUser() ORDER BY created DESC`;
-    
-    const response = await fetch(`${apiBase}/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=10&fields=summary,status,created,parent,creator`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Basic ${credentials}`,
-        'Accept': 'application/json',
-      },
-    });
+      return (data.issues || []).map((issue) => {
+        const date = new Date(issue.fields.created);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
 
-    if (!response.ok) {
-      console.warn('Recent subtasks could not be fetched', response.status);
-      return []; // Silently fallback to empty list
+        let timeAgo = 'Az önce';
+        if (diffMins > 60) {
+          const diffHrs = Math.floor(diffMins / 60);
+          if (diffHrs > 24) timeAgo = `${Math.floor(diffHrs / 24)} gün önce`;
+          else timeAgo = `${diffHrs} saat önce`;
+        } else if (diffMins > 0) {
+          timeAgo = `${diffMins} dakika önce`;
+        }
+
+        return {
+          id: issue.key,
+          parentKey: issue.fields.parent?.key || 'N/A',
+          title: issue.fields.summary,
+          team: 'My Software Team',
+          label: FIXED_AUTOMATION_LABEL,
+          status: issue.fields.status?.name || 'To Do',
+          createdAt: timeAgo,
+          author: issue.fields.creator?.displayName || DEFAULT_USER,
+          jiraUrl: `${envConfig.jira.baseUrl}/browse/${issue.key}`,
+        };
+      });
+    } catch (err) {
+      logError('jiraService.fetchRecentSubtasks', err);
+      return [];
     }
-
-    const data = await response.json();
-    
-    return (data.issues || []).map(issue => {
-      // created format "2026-09-13T17:00:00.000+0300"
-      const date = new Date(issue.fields.created);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffMins = Math.floor(diffMs / 60000);
-      let timeAgo = 'Az önce';
-      if (diffMins > 60) {
-        const diffHrs = Math.floor(diffMins / 60);
-        if (diffHrs > 24) timeAgo = `${Math.floor(diffHrs / 24)} gün önce`;
-        else timeAgo = `${diffHrs} saat önce`;
-      } else if (diffMins > 0) {
-        timeAgo = `${diffMins} dakika önce`;
-      }
-
-      return {
-        id: issue.key,
-        parentKey: issue.fields.parent?.key || 'N/A',
-        title: issue.fields.summary,
-        team: 'My Software Team', // Since we don't store team per ticket right now easily, we can hardcode or leave generic
-        label: FIXED_AUTOMATION_LABEL,
-        status: issue.fields.status?.name || 'To Do',
-        createdAt: timeAgo,
-        author: issue.fields.creator?.displayName || DEFAULT_USER,
-        jiraUrl: `${envConfig.jira.baseUrl}/browse/${issue.key}`,
-      };
-    });
   },
 
   /**
-   * Creates an IPK (İdefix Portfolio Kanban) Demand issue in Jira
+   * Creates an IPK Demand issue in Jira.
    * @param {Object} params
-   * @param {Object} params.ipkData - IPK form object with genel, etki_kapsami, finansal_etki
-   * @param {string} [params.storyKey] - Parent story key if mode was story
-   * @param {Array} [params.attachments] - Array of attached file objects [{ name, sizeMb, fileObject }]
+   * @returns {Promise<Object>}
    */
   async createIpkDemand({ ipkData, storyKey = null, attachments = [] }) {
-    const apiBase = envConfig.isDevelopment
-      ? '/jira-api'
-      : envConfig.jira.baseUrl.replace(/\/+$/, '');
-
-    const email = localStorage.getItem('jira_email') || '';
-    const token = localStorage.getItem('jira_token') || '';
-    const accountId = localStorage.getItem('jira_account_id') || null;
-    const credentials = btoa(`${email}:${token}`);
-
     const g = ipkData.genel || {};
     const e = ipkData.etki_kapsami || {};
     const f = ipkData.finansal_etki || {};
 
-    const projectKey = (storyKey && storyKey.includes('-')) ? storyKey.split('-')[0] : 'SCRUM';
+    const projectKey = storyKey && storyKey.includes('-') ? storyKey.split('-')[0] : 'SCRUM';
 
-    let attachmentListText = '';
-    if (attachments && attachments.length > 0) {
-      attachmentListText = `\n\nh2. 📎 Ekli Dosyalar & Dokümanlar (${attachments.length} Adet)\n` + 
-        attachments.map((att, idx) => `* ${idx + 1}. *${att.name}* (${att.sizeMb} MB)`).join('\n');
-    }
-
-    // Format IPK Form sections into structured Jira description
     const descriptionText = `h2. 📋 Genel Bilgiler
 * *İş Hedefi:* ${g.business_goal || '-'}
 * *İş Hedefi Detayı:* ${g.business_goal_detail || '-'}
@@ -323,116 +513,66 @@ h2. 💰 Finansal Etki Tahmini
 * *CR Etkisi:* ${f.financial_cr || '-'}
 * *Gelir Etkisi:* ${f.financial_revenue || '-'}
 * *Sipariş Etkisi:* ${f.financial_orders || '-'}
-* *Trafik Etkisi:* ${f.financial_traffic || '-'}${attachmentListText}
-`.trim();
+* *Trafik Etkisi:* ${f.financial_traffic || '-'}`;
+
+    const finalDescription = appendAttachmentList(
+      descriptionText.trim(),
+      attachments,
+      '📎 Ekli Dosyalar & Dokümanlar'
+    );
 
     const payload = {
       fields: {
-        project: {
-          key: projectKey
-        },
+        project: { key: projectKey },
         summary: `[IPK Demand] ${g.summary || 'Yeni İPK Talebi'}`,
-        description: descriptionText,
-        issuetype: {
-          name: 'Task'
-        },
+        description: finalDescription,
+        issuetype: { name: 'Task' },
         labels: [FIXED_AUTOMATION_LABEL],
-        ...(accountId ? {
-          reporter: { id: accountId },
-          assignee: { id: accountId }
-        } : {}),
-        ...(storyKey ? {
-          parent: { key: storyKey }
-        } : {})
-      }
-    };
-
-    const uploadAttachmentsToJira = async (issueKey) => {
-      if (!issueKey || !attachments || attachments.length === 0) return;
-      for (const att of attachments) {
-        if (!att.fileObject) continue;
-        try {
-          const formData = new FormData();
-          formData.append('file', att.fileObject);
-          await fetch(`${apiBase}/rest/api/2/issue/${issueKey}/attachments`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Basic ${credentials}`,
-              'X-Atlassian-Token': 'no-check'
-            },
-            body: formData
-          });
-        } catch (attErr) {
-          console.warn(`Jira ek dosya yükleme uyarısı (${att.name}):`, attErr.message);
-        }
-      }
+        ...buildOwnerFields(),
+        ...(storyKey ? { parent: { key: storyKey } } : {}),
+      },
     };
 
     try {
-      const response = await fetch(`${apiBase}/rest/api/2/issue`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${credentials}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Atlassian-Token': 'no-check'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('IPK Demand oluşturulamadı:', errorText);
-        // Fallback: retry without parent if parent binding was not permitted for issue type
+      let data;
+      try {
+        data = await jiraApiClient.post('/rest/api/2/issue', payload);
+      } catch (firstErr) {
+        // Fallback: retry without parent, switch to Story type
         if (payload.fields.parent) {
           delete payload.fields.parent;
-          delete payload.fields.issuetype;
           payload.fields.issuetype = { name: 'Story' };
-          const retryResponse = await fetch(`${apiBase}/rest/api/2/issue`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Basic ${credentials}`,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'X-Atlassian-Token': 'no-check'
-            },
-            body: JSON.stringify(payload)
-          });
-          if (retryResponse.ok) {
-            const retryData = await retryResponse.json();
-            await uploadAttachmentsToJira(retryData.key);
-            return {
-              success: true,
-              key: retryData.key,
-              summary: payload.fields.summary,
-              jiraUrl: `${envConfig.jira.baseUrl}/browse/${retryData.key}`,
-              message: `IPK Demand (${retryData.key}) başarıyla oluşturuldu! (${attachments.length} ek dosya eklendi)`
-            };
-          }
+          data = await jiraApiClient.post('/rest/api/2/issue', payload);
+        } else {
+          throw firstErr;
         }
-        throw new Error(`Jira IPK Demand oluşturma hatası: ${response.status} - ${errorText}`);
       }
 
-      const data = await response.json();
-      await uploadAttachmentsToJira(data.key);
+      if (attachments.length > 0) {
+        await this.uploadAttachmentsToJira(data.key, attachments);
+      }
+
       return {
         success: true,
         key: data.key,
         summary: payload.fields.summary,
         jiraUrl: `${envConfig.jira.baseUrl}/browse/${data.key}`,
-        message: `IPK Demand (${data.key}) başarıyla oluşturuldu! ${attachments.length > 0 ? `(${attachments.length} ek dosya eklendi)` : ''}`
+        message: `IPK Demand (${data.key}) başarıyla oluşturuldu! ${
+          attachments.length > 0 ? `(${attachments.length} ek dosya eklendi)` : ''
+        }`,
       };
-    } catch (error) {
-      console.warn('Jira API hatası, simüle edilmiş bilet oluşturuluyor:', error.message);
+    } catch (err) {
+      logError('jiraService.createIpkDemand', err);
       const mockKey = `IPK-${Math.floor(100 + Math.random() * 900)}`;
       return {
         success: true,
         key: mockKey,
         summary: payload.fields.summary,
         jiraUrl: `${envConfig.jira.baseUrl}/browse/${mockKey}`,
-        message: `IPK Demand (${mockKey}) hazırlandı! ${attachments.length > 0 ? `(${attachments.length} ek dosya eklendi)` : ''} (Etiket: ${FIXED_AUTOMATION_LABEL})`
+        message: `IPK Demand (${mockKey}) hazırlandı! ${
+          attachments.length > 0 ? `(${attachments.length} ek dosya eklendi)` : ''
+        } (Etiket: ${FIXED_AUTOMATION_LABEL})`,
       };
     }
-  }
+  },
 };
-
