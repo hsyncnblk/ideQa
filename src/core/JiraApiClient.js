@@ -106,6 +106,35 @@ class JiraApiClient {
   }
 
   /**
+   * Performs a PUT request with JSON body against Jira REST API.
+   * @param {string} path
+   * @param {object} body
+   * @returns {Promise<any>}
+   * @throws {JiraApiError}
+   */
+  async put(path, body) {
+    const { credentials } = this.getAuth();
+
+    const response = await fetch(`${this.apiBase}${path}`, {
+      method: 'PUT',
+      headers: this._jsonHeaders(credentials, true),
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new JiraApiError(
+        `Jira API hatası: ${response.status}`,
+        response.status,
+        errorText
+      );
+    }
+
+    if (response.status === 204) return { success: true };
+    return response.json();
+  }
+
+  /**
    * Performs a multipart/form-data POST (for file attachments).
    * @param {string} path
    * @param {FormData} formData

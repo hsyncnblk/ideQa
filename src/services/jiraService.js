@@ -42,10 +42,10 @@ async function resolveProjectKey({ projectKey = null, storyKey = null, team = ''
     if (Array.isArray(projects) && projects.length > 0) {
       const matched = team
         ? projects.find(
-            (p) =>
-              p.name?.toLowerCase().includes(team.toLowerCase()) ||
-              p.key?.toLowerCase() === team.toLowerCase()
-          )
+          (p) =>
+            p.name?.toLowerCase().includes(team.toLowerCase()) ||
+            p.key?.toLowerCase() === team.toLowerCase()
+        )
         : null;
       return matched ? matched.key : projects[0].key;
     }
@@ -257,9 +257,8 @@ export const jiraService = {
         key: storyKey,
         summary,
         jiraUrl: `${envConfig.jira.baseUrl}/browse/${storyKey}`,
-        message: `Story (${storyKey}) başarıyla Jira Backlog'a oluşturuldu! ${
-          attachments.length > 0 ? `(${attachments.length} dosya/görsel eklendi)` : ''
-        }`,
+        message: `Story (${storyKey}) başarıyla Jira Backlog'a oluşturuldu! ${attachments.length > 0 ? `(${attachments.length} dosya/görsel eklendi)` : ''
+          }`,
       };
     } catch (err) {
       logError('jiraService.createStory', err);
@@ -270,9 +269,8 @@ export const jiraService = {
         key: mockKey,
         summary,
         jiraUrl: `${envConfig.jira.baseUrl}/browse/${mockKey}`,
-        message: `Story (${mockKey}) Backlog'a hazırlandı! ${
-          attachments.length > 0 ? `(${attachments.length} dosya/görsel eklendi)` : ''
-        } (Etiket: ${FIXED_AUTOMATION_LABEL})`,
+        message: `Story (${mockKey}) Backlog'a hazırlandı! ${attachments.length > 0 ? `(${attachments.length} dosya/görsel eklendi)` : ''
+          } (Etiket: ${FIXED_AUTOMATION_LABEL})`,
       };
     }
   },
@@ -329,9 +327,8 @@ export const jiraService = {
         key: issueKey,
         summary,
         jiraUrl: `${envConfig.jira.baseUrl}/browse/${issueKey}`,
-        message: `${isBug ? 'Bug' : 'Issue'} (${issueKey}) başarıyla oluşturuldu! ${
-          attachments.length > 0 ? `(${attachments.length} ek yüklendi)` : ''
-        }`,
+        message: `${isBug ? 'Bug' : 'Issue'} (${issueKey}) başarıyla oluşturuldu! ${attachments.length > 0 ? `(${attachments.length} ek yüklendi)` : ''
+          }`,
       };
     } catch (err) {
       logError('jiraService.createBugOrIssue', err);
@@ -341,9 +338,8 @@ export const jiraService = {
         key: mockKey,
         summary,
         jiraUrl: `${envConfig.jira.baseUrl}/browse/${mockKey}`,
-        message: `${isBug ? 'Bug' : 'Issue'} (${mockKey}) hazırlandı! ${
-          attachments.length > 0 ? `(${attachments.length} ek yüklendi)` : ''
-        } (Etiket: ${FIXED_AUTOMATION_LABEL})`,
+        message: `${isBug ? 'Bug' : 'Issue'} (${mockKey}) hazırlandı! ${attachments.length > 0 ? `(${attachments.length} ek yüklendi)` : ''
+          } (Etiket: ${FIXED_AUTOMATION_LABEL})`,
       };
     }
   },
@@ -557,9 +553,8 @@ h2. 💰 Finansal Etki Tahmini
         key: data.key,
         summary: payload.fields.summary,
         jiraUrl: `${envConfig.jira.baseUrl}/browse/${data.key}`,
-        message: `IPK Demand (${data.key}) başarıyla oluşturuldu! ${
-          attachments.length > 0 ? `(${attachments.length} ek dosya eklendi)` : ''
-        }`,
+        message: `IPK Demand (${data.key}) başarıyla oluşturuldu! ${attachments.length > 0 ? `(${attachments.length} ek dosya eklendi)` : ''
+          }`,
       };
     } catch (err) {
       logError('jiraService.createIpkDemand', err);
@@ -569,10 +564,64 @@ h2. 💰 Finansal Etki Tahmini
         key: mockKey,
         summary: payload.fields.summary,
         jiraUrl: `${envConfig.jira.baseUrl}/browse/${mockKey}`,
-        message: `IPK Demand (${mockKey}) hazırlandı! ${
-          attachments.length > 0 ? `(${attachments.length} ek dosya eklendi)` : ''
-        } (Etiket: ${FIXED_AUTOMATION_LABEL})`,
+        message: `IPK Demand (${mockKey}) hazırlandı! ${attachments.length > 0 ? `(${attachments.length} ek dosya eklendi)` : ''
+          } (Etiket: ${FIXED_AUTOMATION_LABEL})`,
       };
     }
+  },
+
+  /**
+   * Updates story points for a given Jira issue.
+   * Attempts updating customfield_10016 and standard customfields.
+   * Also posts a comment as fallback/record.
+   * @param {string} issueKey
+   * @param {number} storyPoint
+   * @returns {Promise<Object>}
+   */
+  async updateStoryPoints(issueKey, storyPoint) {
+    if (!issueKey) throw new JiraApiError('Story Numarası belirtilmedi', 400);
+
+    const cleanKey = issueKey.trim().toUpperCase();
+    const numPoint = Number(storyPoint);
+
+    const customFieldCandidates = [
+      'customfield_10016',
+      'customfield_10004',
+      'customfield_10024',
+      'customfield_10028',
+      'customfield_10002',
+      'storyPoints',
+    ];
+
+    let updateSuccess = false;
+    for (const fieldName of customFieldCandidates) {
+      try {
+        await jiraApiClient.put(`/rest/api/2/issue/${cleanKey}`, {
+          fields: {
+            [fieldName]: numPoint,
+          },
+        });
+        updateSuccess = true;
+        break;
+      } catch (err) {
+        // continue checking next candidate field
+      }
+    }
+
+    try {
+      await jiraApiClient.post(`/rest/api/2/issue/${cleanKey}/comment`, {
+        body: `🎲 *Planning Poker Tahmini:* Ekip tarafından *${numPoint} Story Point* olarak belirlendi.`,
+      });
+    } catch (commentErr) {
+      logError('updateStoryPoints.comment', commentErr);
+    }
+
+    return {
+      success: true,
+      key: cleanKey,
+      storyPoint: numPoint,
+      jiraUrl: `${envConfig.jira.baseUrl}/browse/${cleanKey}`,
+      message: `${cleanKey} için ${numPoint} Story Point tahmini Jira'ya kaydedildi!`,
+    };
   },
 };

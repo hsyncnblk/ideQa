@@ -9,6 +9,7 @@ import SubtaskDetailModal from './components/subtask/SubtaskDetailModal';
 import IpkDrawer from './components/ipk/IpkDrawer';
 import StoryDrawer from './components/story/StoryDrawer';
 import BugDrawer from './components/bug/BugDrawer';
+import PlanningPokerDrawer from './components/poker/PlanningPokerDrawer';
 import StatsModal from './components/stats/StatsModal';
 import { useAuth } from './hooks/useAuth';
 import { useSubtasks } from './hooks/useSubtasks';
@@ -38,6 +39,7 @@ export default function App() {
   const [isIpkDrawerOpen, setIsIpkDrawerOpen] = useState(false);
   const [isStoryDrawerOpen, setIsStoryDrawerOpen] = useState(false);
   const [isBugDrawerOpen, setIsBugDrawerOpen] = useState(false);
+  const [isPokerDrawerOpen, setIsPokerDrawerOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -57,6 +59,16 @@ export default function App() {
       team: selectedTeam,
       count: 1,
       platforms: ['Jira Issue/Bug'],
+      subtaskKey: result.key,
+    });
+  };
+
+  const handlePokerCompleted = (result) => {
+    setToast({
+      message: result.message || 'Planning Poker puanı Jira\'ya aktarıldı!',
+      team: selectedTeam,
+      count: 1,
+      platforms: [`${result.storyPoint} SP`],
       subtaskKey: result.key,
     });
   };
@@ -122,6 +134,7 @@ export default function App() {
               onOpenCreateDevSubtask={() => setIsDevSubtaskDrawerOpen(true)}
               onOpenCreateStory={() => setIsStoryDrawerOpen(true)}
               onOpenCreateBug={() => setIsBugDrawerOpen(true)}
+              onOpenPlanningPoker={() => setIsPokerDrawerOpen(true)}
               subtasks={subtasks}
               onSelectSubtask={(task) => setActiveSubtaskDetail(task)}
             />
@@ -169,6 +182,14 @@ export default function App() {
             onClose={() => setIsBugDrawerOpen(false)}
             selectedTeam={selectedTeam}
             onBugCreated={handleBugCreated}
+          />
+
+          {/* 8. Planning Poker Tahmini Drawer Akışı */}
+          <PlanningPokerDrawer
+            isOpen={isPokerDrawerOpen}
+            onClose={() => setIsPokerDrawerOpen(false)}
+            selectedTeam={selectedTeam}
+            onPokerCompleted={handlePokerCompleted}
           />
 
           {/* Stats Modal */}

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { 
-  KeyRound, 
-  ArrowRight, 
-  ShieldCheck, 
-  Layers, 
-  Eye, 
-  EyeOff, 
+import {
+  KeyRound,
+  ArrowRight,
+  ShieldCheck,
+  Layers,
+  Eye,
+  EyeOff,
   Lock,
   Mail
 } from 'lucide-react';
@@ -45,7 +45,7 @@ export default function LoginScreen({ onLoginSuccess }) {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center px-4 sm:px-6 relative overflow-hidden">
-      
+
       {/* İnce arka plan parıltısı */}
       <div className="absolute top-1/3 -left-20 w-80 h-80 bg-jira-600/15 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-1/3 -right-20 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -94,9 +94,8 @@ export default function LoginScreen({ onLoginSuccess }) {
                   if (error) setError('');
                 }}
                 placeholder="ornek@sirket.com"
-                className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border ${
-                  error && !email.trim() ? 'border-rose-400 focus:ring-rose-200' : 'border-slate-200 focus:border-jira-500 focus:ring-jira-100'
-                } text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all`}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border ${error && !email.trim() ? 'border-rose-400 focus:ring-rose-200' : 'border-slate-200 focus:border-jira-500 focus:ring-jira-100'
+                  } text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all`}
               />
             </div>
           </div>
@@ -118,9 +117,8 @@ export default function LoginScreen({ onLoginSuccess }) {
                   if (error) setError('');
                 }}
                 placeholder="ATATT3xFfGF0ciZL..."
-                className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-50 border ${
-                  error && email.trim() && !token.trim() ? 'border-rose-400 focus:ring-rose-200' : 'border-slate-200 focus:border-jira-500 focus:ring-jira-100'
-                } text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all`}
+                className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-50 border ${error && email.trim() && !token.trim() ? 'border-rose-400 focus:ring-rose-200' : 'border-slate-200 focus:border-jira-500 focus:ring-jira-100'
+                  } text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all`}
               />
               <button
                 type="button"

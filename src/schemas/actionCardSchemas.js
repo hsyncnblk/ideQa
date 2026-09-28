@@ -12,6 +12,7 @@ import {
   Code2,
   FileCheck2,
   Bug,
+  Calculator,
 } from 'lucide-react';
 
 /**
@@ -55,6 +56,12 @@ export const CARD_THEMES = {
     badge: 'bg-rose-50 text-rose-700 border-rose-200',
     accent: 'text-jira-600',
   },
+  poker: {
+    iconBg: 'bg-gradient-to-br from-amber-500 to-emerald-600',
+    iconColor: 'text-amber-100',
+    badge: 'bg-amber-50 text-amber-800 border-amber-200',
+    accent: 'text-amber-700',
+  },
 };
 
 /**
@@ -62,6 +69,16 @@ export const CARD_THEMES = {
  * The `onClickKey` is used by ActionGrid to wire up the correct handler from props.
  */
 export const ACTION_CARDS = [
+  {
+    id: 'ipk',
+    title: 'İPK Oluştur',
+    subtitle: 'IPK Demand (Talep) otomasyonu',
+    icon: FileCheck2,
+    isActive: true,
+    badge: 'AI Destekli',
+    onClickKey: 'onOpenCreateIpk',
+    theme: CARD_THEMES.jira,
+  },
   {
     id: 'subtask',
     title: "Story'e Test Subtask Oluştur",
@@ -93,16 +110,6 @@ export const ACTION_CARDS = [
     theme: CARD_THEMES.dev,
   },
   {
-    id: 'ipk',
-    title: 'İPK Oluştur',
-    subtitle: 'IPK Demand (Talep) otomasyonu',
-    icon: FileCheck2,
-    isActive: true,
-    badge: 'AI Destekli',
-    onClickKey: 'onOpenCreateIpk',
-    theme: CARD_THEMES.jira,
-  },
-  {
     id: 'bug',
     title: 'Issue / Bug Oluştur',
     subtitle: 'Story bağlantılı issue veya bağımsız bug',
@@ -111,5 +118,15 @@ export const ACTION_CARDS = [
     badge: 'Jira Entegre',
     onClickKey: 'onOpenCreateBug',
     theme: CARD_THEMES.bug,
+  },
+  {
+    id: 'poker',
+    title: 'Planning Poker Tahmini',
+    subtitle: 'AI Story Point efor tahmini & gerekçe',
+    icon: Calculator,
+    isActive: true,
+    badge: 'Scrum AI',
+    onClickKey: 'onOpenPlanningPoker',
+    theme: CARD_THEMES.poker,
   },
 ];

@@ -13,8 +13,6 @@ const TEAM_COLORS = [
 ];
 
 export default function StatsModal({ isOpen, onClose, subtasks = [] }) {
-  if (!isOpen) return null;
-
   // Ekip bazlı istatistikleri hesapla
   const teamStats = useMemo(() => {
     const map = {};
@@ -47,6 +45,8 @@ export default function StatsModal({ isOpen, onClose, subtasks = [] }) {
     });
     return Object.entries(map).map(([name, count]) => ({ name, count }));
   }, [subtasks]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in">

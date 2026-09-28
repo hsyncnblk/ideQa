@@ -390,4 +390,102 @@ Lütfen bu girdileri inceleyerek Jira için profesyonel bir Hata Kaydı (Bug / I
     const parts = [{ text: prompt }, ...buildImageParts(images)];
     return await geminiApiClient.generateJson(parts, 'Bug/Issue');
   },
+
+  /**
+   * Generates Planning Poker Story Point estimation using Gemini AI.
+   * @param {Object} params
+   * @returns {Promise<Object>}
+   */
+  async generatePlanningPokerEstimation({
+    mode = 'jira',
+    storyKey = '',
+    customTitle = '',
+    customDescription = '',
+    teamName = 'Search',
+    images = [],
+    files = [],
+  }) {
+    let storyContent = '';
+    let formattedKey = '';
+    let jiraAttachments = [];
+
+    if (mode === 'jira' && storyKey) {
+      formattedKey = formatStoryKey(storyKey);
+      try {
+        const storyData = await jiraService.fetchStory(formattedKey);
+        jiraAttachments = storyData.attachments || [];
+        storyContent = `Jira Story No: ${formattedKey} (${storyData.type || 'Story'})
+Başlık: ${storyData.summary}
+Açıklama: ${storyData.description || 'Açıklama girilmemiş.'}`;
+      } catch (err) {
+        logError('geminiService.generatePlanningPokerEstimation.fetchStory', err);
+        storyContent = `Jira Story No: ${formattedKey}
+Başlık: ${formattedKey} Kullanıcı Hikayesi`;
+      }
+    } else {
+      storyContent = `Başlık: ${customTitle || 'Yeni Özellik / Geliştirme Talebi'}
+Açıklama: ${customDescription || 'Açıklama girilmemiş.'}`;
+    }
+
+    const fileListText = files.length > 0
+      ? `\nEkli Dokümanlar: ${files.map((f) => f.name).join(', ')}`
+      : '';
+
+    const jiraImageParts = await downloadJiraImageParts(jiraAttachments);
+    const userImageParts = buildImageParts(images);
+    const imageParts = [...userImageParts, ...jiraImageParts];
+
+    const prompt = `
+Sen kıdemli bir Scrum Master ve Agile Test Mimarısısın. Sana verilecek olan Jira Story detaylarını (Başlık, Açıklama ve Kabul Kriterleri, fotoğraf/doküman) analiz ederek bir Planning Poker efor tahminlemesi yapacaksın.
+
+Değerlendirme Kriterlerin:
+1. İşin teknik karmaşıklığı (Frontend, Backend, Veritabanı değişiklikleri)
+2. Test ve QA eforu (senaryolar, regression riski)
+3. Bilinmeyenler ve bağımlılıklar
+
+Jira Story İçeriği:
+${storyContent}
+Takım: ${teamName}
+${fileListText}
+${imageParts.length > 0 ? `DİKKAT: Story'ye ait ${imageParts.length} adet ekran görüntüsü / mimari / tasarım / doküman görseli mevcuttur. Görsellerdeki arayüzleri, veri yapısını ve akış karmaşıklığını dikkatle analiz et!` : ''}
+
+Çıktıyı KESİNLİKLE aşağıdaki JSON formatında döndür. Markdown kod bloğu dışında hiçbir metin yazma:
+{
+  "storyPoint": 5,
+  "technicalComplexity": "Teknik karmaşıklık analizi (FE, BE, Veritabanı)...",
+  "qaEffort": "Test ve QA eforu analizi (Senaryolar, regression riski)...",
+  "risksAndDependencies": "Bilinmeyenler, riskler ve bağımlılıklar...",
+  "reasoning": [
+    "Teknik Karmaşıklık: FE ve BE entegrasyonu gerektiriyor.",
+    "Test Eforu: Sınır senaryoları ve regresyon riski yüksek.",
+    "Bağımlılıklar: Üçüncü parti servis entegrasyonu bulunuyor."
+  ]
+}
+DİKKAT: storyPoint değeri KESİNLİKLE Planning Poker serisinden bir sayı olmalıdır: 1, 2, 3, 5, 8, 13, 20, 40 veya 100.
+`;
+
+    const parts = [{ text: prompt }, ...imageParts];
+    const result = await geminiApiClient.generateJson(parts, 'Planning Poker');
+
+    const fibonacciNumbers = [1, 2, 3, 5, 8, 13, 20, 40, 100];
+    let point = Number(result.storyPoint) || 3;
+    if (!fibonacciNumbers.includes(point)) {
+      point = fibonacciNumbers.reduce((prev, curr) =>
+        Math.abs(curr - point) < Math.abs(prev - point) ? curr : prev
+      );
+    }
+
+    return {
+      storyKey: formattedKey || null,
+      storyPoint: point,
+      technicalComplexity: result.technicalComplexity || '',
+      qaEffort: result.qaEffort || '',
+      risksAndDependencies: result.risksAndDependencies || '',
+      reasoning: Array.isArray(result.reasoning) ? result.reasoning : [
+        result.technicalComplexity,
+        result.qaEffort,
+        result.risksAndDependencies,
+      ].filter(Boolean),
+    };
+  },
 };
