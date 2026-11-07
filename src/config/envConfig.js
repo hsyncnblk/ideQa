@@ -9,7 +9,7 @@ export const envConfig = {
     model: import.meta.env.VITE_GEMINI_MODEL || 'gemini-1.5-flash',
   },
   jira: {
-    baseUrl: import.meta.env.VITE_JIRA_BASE_URL || 'https://hsynornek.atlassian.net',
+    baseUrl: (import.meta.env.VITE_JIRA_BASE_URL || 'https://hsyndeneme.atlassian.net').replace(/\/+$/, ''),
     defaultTeam: import.meta.env.VITE_DEFAULT_TEAM || 'Team Alpha',
     autoLabel: import.meta.env.VITE_AUTO_LABEL || 'otomasyon_ai',
   },

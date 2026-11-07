@@ -73,23 +73,45 @@ export default function App() {
     });
   };
 
-  const handleSubtaskCreated = async ({ storyKey, storySummary, platforms, scenarios, team, isDevMode }) => {
-    const result = await createBulkSubtasks({
-      storyKey,
-      storySummary,
-      selectedPlatforms: platforms,
-      scenarios,
-      team,
-      author: currentUser,
-      isDevMode,
-    });
+  const handleSubtaskCreated = async ({ storyKey, storySummary, stories, platforms, scenarios, team, isDevMode }) => {
+    // Dev modda birden fazla story gelebilir; tek story akışı da aynı döngüden geçer
+    const targets = stories && stories.length > 0 ? stories : [{ storyKey, storySummary }];
+    const results = [];
+    const failures = [];
+
+    for (const target of targets) {
+      try {
+        const result = await createBulkSubtasks({
+          storyKey: target.storyKey,
+          storySummary: target.storySummary,
+          selectedPlatforms: platforms,
+          scenarios,
+          team,
+          author: currentUser,
+          isDevMode,
+        });
+        results.push(result);
+      } catch (err) {
+        failures.push({ storyKey: target.storyKey, error: err });
+      }
+    }
+
+    if (results.length === 0) {
+      throw failures[0]?.error || new Error('Subtask oluşturulamadı.');
+    }
+
+    const totalCount = results.reduce((sum, r) => sum + (r.count || 0), 0);
+    const message = targets.length === 1
+      ? results[0].message
+      : `${results.length} story için toplam ${totalCount} adet subtask oluşturuldu.` +
+      (failures.length > 0 ? ` Başarısız: ${failures.map((f) => f.storyKey).join(', ')}` : '');
 
     setToast({
-      message: result.message,
+      message,
       team: team,
-      count: result.count,
-      platforms: result.platforms,
-      subtaskKey: result.subtasks[0]?.id,
+      count: totalCount,
+      platforms: [...new Set(results.flatMap((r) => r.platforms || []))],
+      subtaskKey: results[0].subtasks[0]?.id,
     });
   };
 

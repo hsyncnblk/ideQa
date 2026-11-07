@@ -32,10 +32,29 @@ export default function SubtaskConfigStep({
   onGenerate,
   isGenerating,
   isDevMode = false,
+  useAi = false,
+  onUseAiChange,
 }) {
+  // Dev modda virgülle ayrılmış birden fazla story girilebilir
+  const enteredKeys = storyKey
+    .split(/[,;\s]+/)
+    .map((k) => k.trim().toUpperCase())
+    .filter(Boolean);
+
   const handleQuickPick = (key) => {
-    onStoryKeyChange(key);
+    if (!isDevMode) {
+      onStoryKeyChange(key);
+      return;
+    }
+    // Dev modda hızlı seçim listeye ekler / listeden çıkarır
+    const next = enteredKeys.includes(key)
+      ? enteredKeys.filter((k) => k !== key)
+      : [...enteredKeys, key];
+    onStoryKeyChange(next.join(', '));
   };
+
+  const isQuickPickSelected = (key) =>
+    isDevMode ? enteredKeys.includes(key) : storyKey.toUpperCase() === key;
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -44,10 +63,12 @@ export default function SubtaskConfigStep({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-            1. Jira Story Numarası <span className="text-rose-500">*</span>
+            1. Jira Story {isDevMode ? 'Numara(lar)ı' : 'Numarası'} <span className="text-rose-500">*</span>
           </label>
           <span className="text-[11px] text-slate-400 font-medium">
-            Format: PROJ-123
+            {isDevMode
+              ? `Virgülle birden fazla girilebilir${enteredKeys.length > 1 ? ` (${enteredKeys.length} story)` : ''}`
+              : 'Format: PROJ-123'}
           </span>
         </div>
 
@@ -55,7 +76,7 @@ export default function SubtaskConfigStep({
           type="text"
           value={storyKey}
           onChange={(e) => onStoryKeyChange(e.target.value)}
-          placeholder="Örn: PROJ-123 veya PAY-450"
+          placeholder={isDevMode ? 'Örn: MP-123, MP-435, MP-512' : 'Örn: PROJ-123 veya PAY-450'}
           disabled={isGenerating}
           className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border ${
             inputError 
@@ -80,7 +101,7 @@ export default function SubtaskConfigStep({
               type="button"
               onClick={() => handleQuickPick(sample.key)}
               className={`text-xs px-2 py-0.5 rounded-md border font-mono transition-all cursor-pointer ${
-                storyKey.toUpperCase() === sample.key
+                isQuickPickSelected(sample.key)
                   ? 'bg-jira-600 text-white border-jira-600 font-bold'
                   : 'bg-white text-slate-600 border-slate-200 hover:border-jira-300 hover:bg-jira-50'
               }`}
@@ -148,8 +169,45 @@ export default function SubtaskConfigStep({
         </div>
       </div>
 
-      {/* 3. Ek Yönlendirme & Ekran Görüntüsü / Tasarım Yükleme (Opsiyonel) */}
+      {/* Yapay Zeka ile İçerik Üretimi Seçimi (sadece Test modu) */}
       {!isDevMode && (
+        <label
+          className={`flex items-start gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+            useAi
+              ? 'border-jira-600 bg-jira-50/60 ring-2 ring-jira-100'
+              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={useAi}
+            onChange={(e) => onUseAiChange && onUseAiChange(e.target.checked)}
+            disabled={isGenerating}
+            className="sr-only"
+          />
+          <div
+            className={`w-5 h-5 mt-0.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+              useAi ? 'bg-jira-600 border-jira-600 text-white' : 'border-slate-300 bg-white'
+            }`}
+          >
+            {useAi && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              Yapay zeka ile içerik üretilsin mi?
+            </span>
+            <span className="text-[11px] text-slate-500 block mt-0.5">
+              {useAi
+                ? 'Gemini, Story ve görselleri analiz ederek test senaryolarını üretir; önizleyip düzenledikten sonra Jira\'ya gönderirsiniz.'
+                : 'Seçili platformlar için içeriği boş test subtask\'ları doğrudan Jira\'da açılır.'}
+            </span>
+          </div>
+        </label>
+      )}
+
+      {/* 3. Ek Yönlendirme & Ekran Görüntüsü / Tasarım Yükleme (Opsiyonel) */}
+      {!isDevMode && useAi && (
         <div className="space-y-3">
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -228,14 +286,24 @@ export default function SubtaskConfigStep({
           className={`w-full py-3.5 px-4 rounded-xl text-white font-bold text-sm shadow-md hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed ${
             isDevMode
               ? 'bg-gradient-to-r from-violet-600 to-indigo-700 shadow-indigo-600/20 hover:shadow-indigo-600/30'
-              : 'ai-gradient-bg shadow-purple-600/20 hover:shadow-purple-600/30'
+              : useAi
+              ? 'ai-gradient-bg shadow-purple-600/20 hover:shadow-purple-600/30'
+              : 'jira-gradient-bg shadow-jira-600/20 hover:shadow-jira-600/30'
           }`}
         >
-          {isDevMode
+          {isDevMode || !useAi
             ? <Code2 className="w-4 h-4 text-violet-200 group-hover:scale-110 transition-transform" />
             : <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
           }
-          <span>{isDevMode ? 'Subtask Oluştur' : 'Gemini ile Senaryo Üret'}</span>
+          <span>
+            {isDevMode
+              ? enteredKeys.length > 1
+                ? `${enteredKeys.length} Story için Subtask Oluştur`
+                : 'Subtask Oluştur'
+              : useAi
+              ? 'Gemini ile Senaryo Üret'
+              : 'Boş Test Subtask Oluştur'}
+          </span>
           <ArrowRight className="w-4 h-4 ml-0.5 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>

@@ -64,9 +64,18 @@ export default function ActionGrid(props) {
           return (
             <div
               key={card.id}
-              className="relative flex flex-col justify-between p-4 rounded-xl bg-white/60 border border-slate-200/80 text-left opacity-70 hover:opacity-85 transition-opacity"
+              aria-disabled="true"
+              className="group relative flex flex-col justify-between p-4 rounded-xl bg-white/60 border border-slate-200/80 text-left cursor-not-allowed select-none"
             >
-              <div>
+              {/* Hover "Yakında" tooltip */}
+              <div className="pointer-events-none absolute -top-2.5 left-1/2 -translate-x-1/2 -translate-y-full z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                <div className="relative px-2.5 py-1 rounded-md bg-slate-900 text-white text-[11px] font-semibold shadow-lg whitespace-nowrap">
+                  🚀 Yakında
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-900" />
+                </div>
+              </div>
+
+              <div className="opacity-60 grayscale">
                 <div className="flex items-center justify-between mb-3">
                   <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center">
                     <Icon className="w-4 h-4" />
@@ -84,7 +93,7 @@ export default function ActionGrid(props) {
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-100/60 flex items-center gap-1.5 text-xs text-slate-400">
+              <div className="mt-4 pt-3 border-t border-slate-100/60 flex items-center gap-1.5 text-xs text-slate-400 opacity-70">
                 <Lock className="w-3 h-3" />
                 <span>Devre dışı</span>
               </div>

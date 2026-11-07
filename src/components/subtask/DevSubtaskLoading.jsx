@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Code2, Check, Terminal, Layers, ArrowRight } from 'lucide-react';
 
-export default function DevSubtaskLoading({ storyKey, selectedPlatforms = [] }) {
+export default function DevSubtaskLoading({ storyKeys = [], selectedPlatforms = [], variant = 'dev' }) {
   const [currentStep, setCurrentStep] = useState(1);
+  const isTest = variant === 'test';
+  const storyLabel = storyKeys.length > 0 ? storyKeys.join(', ') : 'Story';
+  const prefix = isTest ? 'Test ' : 'Dev ';
 
   const steps = [
     {
       id: 1,
-      title: 'Jira Story Bilgisi Çekiliyor',
-      desc: `${storyKey || 'Story'} Jira REST API üzerinden doğrulanıyor ve başlık/kapsam alınıyor...`,
+      title: storyKeys.length > 1 ? `${storyKeys.length} Jira Story Bilgisi Çekiliyor` : 'Jira Story Bilgisi Çekiliyor',
+      desc: `${storyLabel} Jira REST API üzerinden doğrulanıyor ve başlık/kapsam alınıyor...`,
     },
     {
       id: 2,
-      title: 'Platform Dev Görevleri Yapılandırılıyor',
-      desc: `Seçili platformlar (${selectedPlatforms.join(', ') || 'FE, BE, App'}) için geliştirici subtask şablonları hazırlanıyor...`,
+      title: isTest ? 'Platform Test Görevleri Yapılandırılıyor' : 'Platform Dev Görevleri Yapılandırılıyor',
+      desc: `Seçili platformlar (${selectedPlatforms.join(', ') || 'FE, BE, App'}) için ${isTest ? 'boş test' : 'geliştirici'} subtask şablonları hazırlanıyor...`,
     },
     {
       id: 3,
@@ -43,13 +46,15 @@ export default function DevSubtaskLoading({ storyKey, selectedPlatforms = [] }) 
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h4 className="text-base font-bold text-slate-900">Dev Subtask'ları Oluşturuluyor</h4>
+              <h4 className="text-base font-bold text-slate-900">{isTest ? "Test Subtask'ları Oluşturuluyor" : "Dev Subtask'ları Oluşturuluyor"}</h4>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 font-mono">
-                Dev Mode • Jira API
+                {isTest ? 'Boş Senaryo' : 'Dev Mode'} • Jira API
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Geliştiriciler için doğrudan platforma özel (App, BE, FE) boş Jira görevleri açılıyor
+              {isTest
+                ? 'Yapay zeka kullanılmadan platforma özel (App, BE, FE) boş test görevleri açılıyor'
+                : 'Geliştiriciler için doğrudan platforma özel (App, BE, FE) boş Jira görevleri açılıyor'}
             </p>
           </div>
         </div>
@@ -130,21 +135,24 @@ export default function DevSubtaskLoading({ storyKey, selectedPlatforms = [] }) 
           <span className="text-emerald-400">● CANLI</span>
         </div>
         <div className="space-y-1 pt-1">
-          <div className="text-slate-400 flex items-center gap-2">
-            <span className="text-indigo-400">&gt;</span>
-            <span>GET /rest/api/2/issue/{storyKey || 'STORY'}</span>
-            <span className="text-emerald-400 text-[10px]">[OK]</span>
-          </div>
-          {selectedPlatforms.map((plat, idx) => (
+          {(storyKeys.length > 0 ? storyKeys : ['STORY']).map((key) => (
+            <div key={`get-${key}`} className="text-slate-400 flex items-center gap-2">
+              <span className="text-indigo-400">&gt;</span>
+              <span>GET /rest/api/2/issue/{key}</span>
+              <span className="text-emerald-400 text-[10px]">[OK]</span>
+            </div>
+          ))}
+          {(storyKeys.length > 0 ? storyKeys : ['STORY']).flatMap((key) =>
+            selectedPlatforms.map((plat) => (
             <div
-              key={plat}
+              key={`${key}-${plat}`}
               className={`flex items-center gap-2 transition-opacity ${
                 currentStep >= 2 ? 'text-indigo-300' : 'text-slate-600'
               }`}
             >
               <span className="text-indigo-400">&gt;</span>
               <span>
-                POST /rest/api/2/issue [Dev {plat} - {storyKey || 'STORY'}]
+                POST /rest/api/2/issue [{prefix}{plat} - {key}]
               </span>
               {currentStep >= 3 ? (
                 <span className="text-emerald-400 text-[10px]">CREATED</span>
@@ -154,7 +162,8 @@ export default function DevSubtaskLoading({ storyKey, selectedPlatforms = [] }) 
                 <span className="text-slate-600 text-[10px]">QUEUED</span>
               )}
             </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 

@@ -32,6 +32,7 @@ export default function SubtaskDrawer({
   const [selectedPlatforms, setSelectedPlatforms] = useState(['FE', 'BE']);
   const [extraGuidance, setExtraGuidance] = useState('');
   const [customImage, setCustomImage] = useState(null);
+  const [useAi, setUseAi] = useState(false);
   const [inputError, setInputError] = useState('');
 
   // Aşama 2: Üretim ve Düzenleme Durumları
@@ -81,19 +82,33 @@ export default function SubtaskDrawer({
     });
   };
 
-  // Ana aksiyon: Test modda Gemini, Dev modda direkt Jira'ya gönder
+  // Ana aksiyon: Test modda Gemini (veya boş subtask), Dev modda direkt Jira'ya gönder
   const handleGenerate = async () => {
-    const cleanKey = storyKey.trim().toUpperCase();
+    // Virgül / noktalı virgül / boşluk ile ayrılmış key'leri ayrıştır (tekrarları temizle)
+    const keys = [...new Set(
+      storyKey
+        .split(/[,;\s]+/)
+        .map((k) => k.trim().toUpperCase())
+        .filter(Boolean)
+    )];
 
-    if (!cleanKey) {
+    if (keys.length === 0) {
       setInputError('Lütfen geçerli bir Jira Story No girin (Örn: PROJ-123)');
       return;
     }
 
-    if (!cleanKey.includes('-')) {
-      setInputError('Story numarası proje kodu içermelidir (Örn: PROJ-123 veya PAY-450)');
+    if (!isDevMode && keys.length > 1) {
+      setInputError('Test subtask için tek bir Story numarası girin.');
       return;
     }
+
+    const invalidKeys = keys.filter((k) => !/^[A-Z][A-Z0-9_]*-\d+$/.test(k));
+    if (invalidKeys.length > 0) {
+      setInputError(`Geçersiz Story numarası: ${invalidKeys.join(', ')} (Örn: PROJ-123 veya PAY-450)`);
+      return;
+    }
+
+    const cleanKey = keys[0];
 
     if (selectedPlatforms.length === 0) {
       setInputError('Lütfen en az bir platform (App, BE, FE) seçin.');
@@ -106,10 +121,35 @@ export default function SubtaskDrawer({
 
     try {
       if (isDevMode) {
-        // Dev modda: sadece story bilgisini Jira'dan çek, senaryo üretme, direkt oluştur
+        // Dev modda: tüm story bilgilerini Jira'dan çek, senaryo üretme, direkt oluştur
+        const [storyInfos] = await Promise.all([
+          Promise.all(
+            keys.map((key) =>
+              jiraService.fetchStory(key).catch((err) => {
+                throw new Error(`${key}: ${err.message || 'Story bilgisi alınamadı.'}`);
+              })
+            )
+          ),
+          new Promise((resolve) => setTimeout(resolve, 1400)),
+        ]);
+        confetti({ particleCount: 70, spread: 75, origin: { y: 0.85 } });
+        await onSubtaskCreated({
+          stories: keys.map((key, idx) => ({
+            storyKey: key,
+            storySummary: storyInfos[idx]?.summary,
+          })),
+          platforms: selectedPlatforms,
+          scenarios: {},
+          team: selectedTeam,
+          isDevMode: true,
+        });
+        handleReset();
+        onClose();
+      } else if (!useAi) {
+        // Test modda AI kapalı: içeriği boş test subtask'larını direkt oluştur
         const [storyInfo] = await Promise.all([
           jiraService.fetchStory(cleanKey),
-          new Promise((resolve) => setTimeout(resolve, 1400)),
+          new Promise((resolve) => setTimeout(resolve, 1000)),
         ]);
         confetti({ particleCount: 70, spread: 75, origin: { y: 0.85 } });
         await onSubtaskCreated({
@@ -118,7 +158,7 @@ export default function SubtaskDrawer({
           platforms: selectedPlatforms,
           scenarios: {},
           team: selectedTeam,
-          isDevMode: true,
+          isDevMode: false,
         });
         handleReset();
         onClose();
@@ -224,6 +264,7 @@ export default function SubtaskDrawer({
       URL.revokeObjectURL(customImage.previewUrl);
     }
     setCustomImage(null);
+    setUseAi(false);
     setInputError('');
     setIsGenerating(false);
     setGeneratedResult(null);
@@ -308,15 +349,18 @@ export default function SubtaskDrawer({
                 onGenerate={handleGenerate}
                 isGenerating={isGenerating}
                 isDevMode={isDevMode}
+                useAi={useAi}
+                onUseAiChange={setUseAi}
               />
             )}
 
             {/* 2. ADIM: YÜKLENİYOR SİMÜLASYONU */}
             {isGenerating && (
-              isDevMode ? (
+              isDevMode || !useAi ? (
                 <DevSubtaskLoading 
-                  storyKey={storyKey.toUpperCase()} 
+                  storyKeys={storyKey.split(/[,;\s]+/).map((k) => k.trim().toUpperCase()).filter(Boolean)}
                   selectedPlatforms={selectedPlatforms}
+                  variant={isDevMode ? 'dev' : 'test'}
                 />
               ) : (
                 <GeminiLoading storyKey={storyKey.toUpperCase()} />
@@ -339,7 +383,7 @@ export default function SubtaskDrawer({
           {/* Drawer Alt Şerit: JİRA'YA AKTARIM */}
           <div className="p-5 bg-slate-50 border-t border-slate-200 space-y-2.5">
             {/* Dev modda direkt oluştur butonu konfigürasyon ekranında handleGenerate'e bağlı, bu alan sadece Test modunda görünür */}
-            {!isDevMode && (
+            {!isDevMode && useAi && (
               <>
                 <button
                   type="button"
@@ -376,7 +420,12 @@ export default function SubtaskDrawer({
             )}
             {isDevMode && (
               <p className="text-[11px] text-center text-slate-500">
-                Story No girip platforma seçtikten sonra "Subtask Oluştur" butonuna basın.
+                Story No(ları) virgülle girip platform seçtikten sonra "Subtask Oluştur" butonuna basın. Her story için ayrı subtask'lar açılır.
+              </p>
+            )}
+            {!isDevMode && !useAi && (
+              <p className="text-[11px] text-center text-slate-500">
+                Yapay zeka kapalı: seçili her platform için içeriği boş "Test [Platform] - Story Konusu" subtask'ı açılacaktır.
               </p>
             )}
           </div>
