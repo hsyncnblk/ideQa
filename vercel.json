@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/ai",
+      "destination": "/api/ai.js"
+    },
+    {
+      "source": "/api/gemini",
+      "destination": "/api/ai.js"
+    },
+    {
+      "source": "/api/jira",
+      "destination": "/api/jira.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

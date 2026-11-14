@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   Layers,
@@ -8,9 +8,10 @@ import {
   Users,
   Check,
   BarChart3,
-  ExternalLink
+  Key,
 } from 'lucide-react';
 import { MP_TEAMS } from '../../constants/jiraConstants';
+import { getAiConfig } from '../../core/aiConfig';
 
 export default function Header({
   user = 'Hüseyin Ç.',
@@ -18,9 +19,19 @@ export default function Header({
   onSelectTeam,
   onLogout,
   onOpenStats,
+  onOpenAiModal,
 }) {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false);
+  const [aiConfig, setAiConfig] = useState(getAiConfig());
+
+  useEffect(() => {
+    const handleStorage = () => setAiConfig(getAiConfig());
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  const providerLabel = aiConfig.provider === 'claude' ? 'Claude' : 'Gemini';
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
@@ -37,15 +48,31 @@ export default function Header({
               <span className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                 Jira <span className="text-jira-600">AI</span> Test Asistanı
               </span>
-              <span className="hidden xs:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/80">
-                <Sparkles className="w-2.5 h-2.5 text-purple-600" />
-                Gemini Flash
-              </span>
+
+              {/* AI Token Pill / Buton */}
+              <button
+                onClick={onOpenAiModal}
+                className="hidden xs:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/80 transition-colors cursor-pointer"
+                title="Yapay Zeka API Token'ını Güncelle"
+              >
+                <Sparkles className="w-3 h-3 text-purple-600" />
+                <span>{providerLabel}</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${aiConfig.hasToken ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+              </button>
             </div>
           </div>
 
           {/* Sağ Taraf: Takım Rozeti & Kullanıcı Profili */}
           <div className="flex items-center gap-3">
+
+            {/* AI Butonu (küçük ekranlar için) */}
+            <button
+              onClick={onOpenAiModal}
+              className="xs:hidden flex items-center gap-1 p-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-xs font-semibold cursor-pointer"
+              title="AI Token"
+            >
+              <Key className="w-3.5 h-3.5" />
+            </button>
 
             {/* MPTeam Seçici */}
             {selectedTeam && (
@@ -113,7 +140,7 @@ export default function Header({
                 className="flex items-center gap-2 p-1 sm:px-2 sm:py-1 rounded-lg hover:bg-slate-100 transition-all cursor-pointer"
               >
                 <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-jira-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
-                  HÇ
+                  {user ? user.slice(0, 2).toUpperCase() : 'HÇ'}
                 </div>
                 <span className="text-xs font-bold text-slate-800 hidden sm:inline">
                   {user}
@@ -133,6 +160,16 @@ export default function Header({
                   </div>
 
                   <div className="py-1">
+                    <button
+                      onClick={() => {
+                        setProfileDropdownOpen(false);
+                        onOpenAiModal();
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 text-xs text-purple-700 hover:bg-purple-50 flex items-center gap-2 font-medium cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                      Yapay Zeka Ayarları
+                    </button>
                     <button
                       onClick={() => {
                         setProfileDropdownOpen(false);

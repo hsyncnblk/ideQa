@@ -3,7 +3,7 @@
  * 
  * Single-responsibility HTTP client for all Jira REST API calls.
  * Centralizes: apiBase resolution, Basic Auth credentials, header management,
- * and HTTP error handling. Eliminates 8+ repeated credential blocks across jiraService.
+ * and HTTP error handling.
  */
 
 import { envConfig } from '../config/envConfig';
@@ -12,38 +12,52 @@ import { JiraApiError, logError } from './ErrorHandler';
 class JiraApiClient {
   /**
    * Resolves the base URL for Jira API.
-   * Uses Vite proxy in development, direct URL in production.
+   * In development or production (Vercel): uses /api/jira proxy to bypass CORS.
+   * If local dev proxy configured for /jira-api, it works seamlessly.
    * @returns {string}
    */
   get apiBase() {
-    return envConfig.isDevelopment
-      ? '/jira-api'
-      : envConfig.jira.baseUrl.replace(/\/+$/, '');
+    return envConfig.isDevelopment ? '/jira-api' : '/api/jira';
   }
 
   /**
-   * Reads stored credentials from localStorage and returns Base64-encoded auth string.
-   * @returns {{ credentials: string, email: string, token: string, accountId: string }}
+   * Reads stored credentials and target Jira URL from localStorage.
+   * @returns {{ credentials: string, email: string, token: string, accountId: string, jiraUrl: string }}
    */
   getAuth() {
     const email = localStorage.getItem('jira_email') || '';
     const token = localStorage.getItem('jira_token') || '';
     const accountId = localStorage.getItem('jira_account_id') || '';
+    const jiraUrl = envConfig.jira.baseUrl;
     const credentials = btoa(`${email}:${token}`);
-    return { credentials, email, token, accountId };
+    return { credentials, email, token, accountId, jiraUrl };
   }
 
   /**
-   * Builds default headers for JSON requests.
+   * Builds request URL, handling Vercel serverless proxy path parameter if in production.
+   * @param {string} path - e.g. /rest/api/2/myself
+   * @returns {string}
+   */
+  _buildUrl(path) {
+    if (this.apiBase === '/api/jira') {
+      return `/api/jira?path=${encodeURIComponent(path)}`;
+    }
+    return `${this.apiBase}${path}`;
+  }
+
+  /**
+   * Builds default headers for requests.
    * @param {string} credentials - Base64 auth string
    * @param {boolean} [includeAtlassianToken=false]
    * @returns {object}
    */
   _jsonHeaders(credentials, includeAtlassianToken = false) {
+    const { jiraUrl } = this.getAuth();
     const headers = {
       'Authorization': `Basic ${credentials}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'x-jira-target-url': jiraUrl,
     };
     if (includeAtlassianToken) {
       headers['X-Atlassian-Token'] = 'no-check';
@@ -55,18 +69,21 @@ class JiraApiClient {
    * Performs a GET request against Jira REST API.
    * @param {string} path - API path (e.g. '/rest/api/2/myself')
    * @param {string} [overrideCredentials] - Optional explicit credentials (for login validation)
+   * @param {string} [overrideTargetUrl] - Optional target URL for login check
    * @returns {Promise<any>} Parsed JSON response
    * @throws {JiraApiError}
    */
-  async get(path, overrideCredentials = null) {
-    const { credentials } = this.getAuth();
+  async get(path, overrideCredentials = null, overrideTargetUrl = null) {
+    const { credentials, jiraUrl } = this.getAuth();
     const authToken = overrideCredentials || credentials;
+    const targetUrl = overrideTargetUrl || jiraUrl;
 
-    const response = await fetch(`${this.apiBase}${path}`, {
+    const response = await fetch(this._buildUrl(path), {
       method: 'GET',
       headers: {
         'Authorization': `Basic ${authToken}`,
         'Accept': 'application/json',
+        'x-jira-target-url': targetUrl,
       },
     });
 
@@ -87,7 +104,7 @@ class JiraApiClient {
   async post(path, body) {
     const { credentials } = this.getAuth();
 
-    const response = await fetch(`${this.apiBase}${path}`, {
+    const response = await fetch(this._buildUrl(path), {
       method: 'POST',
       headers: this._jsonHeaders(credentials, true),
       body: JSON.stringify(body),
@@ -115,7 +132,7 @@ class JiraApiClient {
   async put(path, body) {
     const { credentials } = this.getAuth();
 
-    const response = await fetch(`${this.apiBase}${path}`, {
+    const response = await fetch(this._buildUrl(path), {
       method: 'PUT',
       headers: this._jsonHeaders(credentials, true),
       body: JSON.stringify(body),
@@ -142,13 +159,14 @@ class JiraApiClient {
    * @throws {JiraApiError}
    */
   async postForm(path, formData) {
-    const { credentials } = this.getAuth();
+    const { credentials, jiraUrl } = this.getAuth();
 
-    const response = await fetch(`${this.apiBase}${path}`, {
+    const response = await fetch(this._buildUrl(path), {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${credentials}`,
         'X-Atlassian-Token': 'no-check',
+        'x-jira-target-url': jiraUrl,
       },
       body: formData,
     });
@@ -165,28 +183,24 @@ class JiraApiClient {
 
   /**
    * Fetches binary content (e.g., attachment) as a Blob.
-   * Handles dev proxy URL rewriting.
    * @param {string} contentUrl - Full or relative URL
    * @returns {Promise<Blob>}
    * @throws {JiraApiError}
    */
   async getBlob(contentUrl) {
-    const { credentials } = this.getAuth();
+    const { credentials, jiraUrl } = this.getAuth();
 
-    let fetchUrl = contentUrl;
-    if (envConfig.isDevelopment) {
-      const jiraBase = envConfig.jira.baseUrl.replace(/\/+$/, '');
-      if (contentUrl.startsWith(jiraBase)) {
-        fetchUrl = contentUrl.replace(jiraBase, '/jira-api');
-      } else if (!contentUrl.startsWith('/jira-api') && contentUrl.startsWith('/')) {
-        fetchUrl = `/jira-api${contentUrl}`;
-      }
+    let fetchPath = contentUrl;
+    const jiraBase = jiraUrl.replace(/\/+$/, '');
+    if (contentUrl.startsWith(jiraBase)) {
+      fetchPath = contentUrl.replace(jiraBase, '');
     }
 
-    const response = await fetch(fetchUrl, {
+    const response = await fetch(this._buildUrl(fetchPath), {
       method: 'GET',
       headers: {
         'Authorization': `Basic ${credentials}`,
+        'x-jira-target-url': jiraUrl,
       },
     });
 

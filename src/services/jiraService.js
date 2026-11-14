@@ -11,6 +11,7 @@ import { envConfig } from '../config/envConfig';
 import { FIXED_AUTOMATION_LABEL, DEFAULT_USER } from '../constants/jiraConstants';
 import { jiraApiClient } from '../core/JiraApiClient';
 import { JiraApiError, logError } from '../core/ErrorHandler';
+import { markdownToJira } from '../utils/jiraMarkup';
 
 // ── Project Key Resolution (shared helper) ───────────────────────────────────
 
@@ -92,11 +93,12 @@ export const jiraService = {
    * Validates Jira credentials by calling /rest/api/2/myself
    * @param {string} email
    * @param {string} token
+   * @param {string} [customUrl]
    * @returns {Promise<Object>} User info
    */
-  async validateToken(email, token) {
+  async validateToken(email, token, customUrl = null) {
     const credentials = btoa(`${email}:${token}`);
-    const data = await jiraApiClient.get('/rest/api/2/myself', credentials);
+    const data = await jiraApiClient.get('/rest/api/2/myself', credentials, customUrl);
     return {
       displayName: data.displayName,
       emailAddress: data.emailAddress || email,
@@ -371,8 +373,12 @@ export const jiraService = {
       if (!isDevMode) {
         const platformData = scenarios[platform];
         if (platformData) {
-          if (platformData.positive?.selected) descriptionText += platformData.positive.content + '\n\n';
-          if (platformData.negative?.selected) descriptionText += platformData.negative.content + '\n\n';
+          if (platformData.positive?.selected && platformData.positive.content) {
+            descriptionText += markdownToJira(platformData.positive.content) + '\n\n';
+          }
+          if (platformData.negative?.selected && platformData.negative.content) {
+            descriptionText += markdownToJira(platformData.negative.content) + '\n\n';
+          }
         }
       }
 

@@ -11,6 +11,7 @@ import StoryDrawer from './components/story/StoryDrawer';
 import BugDrawer from './components/bug/BugDrawer';
 import PlanningPokerDrawer from './components/poker/PlanningPokerDrawer';
 import StatsModal from './components/stats/StatsModal';
+import AiTokenModal from './components/shared/AiTokenModal';
 import { useAuth } from './hooks/useAuth';
 import { useSubtasks } from './hooks/useSubtasks';
 
@@ -41,6 +42,7 @@ export default function App() {
   const [isBugDrawerOpen, setIsBugDrawerOpen] = useState(false);
   const [isPokerDrawerOpen, setIsPokerDrawerOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
   const handleStoryCreated = (result) => {
@@ -145,6 +147,7 @@ export default function App() {
             onSelectTeam={setSelectedTeam}
             onLogout={logout}
             onOpenStats={() => setIsStatsOpen(true)}
+            onOpenAiModal={() => setIsAiModalOpen(true)}
           />
 
           <main className="flex-1">
@@ -219,6 +222,12 @@ export default function App() {
             isOpen={isStatsOpen}
             onClose={() => setIsStatsOpen(false)}
             subtasks={subtasks}
+          />
+
+          {/* AI Model & Token Modal */}
+          <AiTokenModal
+            isOpen={isAiModalOpen}
+            onClose={() => setIsAiModalOpen(false)}
           />
 
           {/* Subtask Detay Modalı */}

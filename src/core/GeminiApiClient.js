@@ -1,80 +1,65 @@
 /**
  * @module core/GeminiApiClient
  * 
- * Single-responsibility HTTP client for Google Gemini Generative AI API.
- * Centralizes: API key validation, endpoint construction, response parsing,
- * and JSON cleaning (removing markdown ```json fences).
+ * Multi-provider client for Generative AI (Gemini and Claude).
+ * Calls /api/ai and passes the active provider and token from localStorage.
  */
 
-import { envConfig } from '../config/envConfig';
 import { GeminiApiError, logError } from './ErrorHandler';
-
-const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+import { getAiConfig } from './aiConfig';
 
 class GeminiApiClient {
   /**
-   * Validates that a Gemini API key is configured.
-   * @throws {GeminiApiError}
-   */
-  _validateApiKey() {
-    const apiKey = envConfig.gemini.apiKey;
-    if (!apiKey || apiKey.includes('your_gemini_api_key_here')) {
-      throw new GeminiApiError(
-        'Gemini API Anahtarı eksik veya geçersiz. Lütfen .env dosyasını kontrol edin.',
-        401
-      );
-    }
-  }
-
-  /**
-   * Calls the Gemini generateContent endpoint with given parts and config.
-   * Handles response parsing, error mapping, and JSON cleaning.
+   * Calls /api/ai backend proxy with given parts and config.
    *
    * @param {Array<object>} parts - Content parts (text, inlineData, etc.)
    * @param {object} [generationConfig] - Optional generation config overrides
-   * @returns {Promise<string>} Raw text from the first candidate
+   * @returns {Promise<string>} Raw text from candidate
    * @throws {GeminiApiError}
    */
   async generateContent(parts, generationConfig = { responseMimeType: 'application/json' }) {
-    this._validateApiKey();
-
-    const apiKey = envConfig.gemini.apiKey;
-    const model = envConfig.gemini.model;
-    const url = `${GEMINI_BASE_URL}/${model}:generateContent?key=${apiKey}`;
+    const aiConfig = getAiConfig();
+    const token = aiConfig.activeToken;
+    const provider = aiConfig.provider;
 
     let response;
     try {
-      response = await fetch(url, {
+      response = await fetch('/api/ai', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-ai-token': token || '',
+        },
         body: JSON.stringify({
-          contents: [{ parts }],
+          provider,
+          token,
+          parts,
           generationConfig,
         }),
       });
     } catch (networkError) {
       logError('GeminiApiClient.generateContent', networkError);
       throw new GeminiApiError(
-        'Gemini API\'ye bağlanılamadı. İnternet bağlantınızı kontrol edin.',
+        'AI servisine bağlanılamadı. İnternet bağlantınızı kontrol edin.',
         0
       );
     }
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      logError('GeminiApiClient.generateContent', new Error(`HTTP ${response.status}: ${errText}`));
+      const errData = await response.json().catch(() => ({}));
+      const errText = errData.error || `HTTP ${response.status}`;
+      logError('GeminiApiClient.generateContent', new Error(errText));
       throw new GeminiApiError(
-        `Gemini API Hatası: ${response.status}`,
-        response.status,
-        errText
+        `AI Hatası: ${errText}`,
+        response.status
       );
     }
 
     const data = await response.json();
-    const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const resultText = data.text;
 
     if (!resultText) {
-      throw new GeminiApiError('Gemini boş bir sonuç döndürdü.', 200);
+      throw new GeminiApiError('Yapay zeka boş bir sonuç döndürdü.', 200);
     }
 
     return resultText;
@@ -101,7 +86,7 @@ class GeminiApiClient {
     } catch (parseError) {
       logError(`GeminiApiClient.generateJson[${contextLabel}]`, parseError);
       throw new GeminiApiError(
-        `Gemini beklenen JSON formatında ${contextLabel} şeması üretemedi. Lütfen tekrar deneyin.`,
+        `Yapay zeka beklenen JSON formatında ${contextLabel} şeması üretemedi. Lütfen tekrar deneyin.`,
         200
       );
     }

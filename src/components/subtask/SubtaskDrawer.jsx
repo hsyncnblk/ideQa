@@ -14,6 +14,8 @@ import { jiraService } from '../../services/jiraService';
 import SubtaskConfigStep from './SubtaskConfigStep';
 import PlatformTabsPreview from './PlatformTabsPreview';
 import GeminiLoading from './GeminiLoading';
+import AiTokenModal from '../shared/AiTokenModal';
+import { getAiConfig } from '../../core/aiConfig';
 
 import DevSubtaskLoading from './DevSubtaskLoading';
 
@@ -29,10 +31,11 @@ export default function SubtaskDrawer({
 
   // Aşama 1: Konfigürasyon Durumları
   const [storyKey, setStoryKey] = useState('');
-  const [selectedPlatforms, setSelectedPlatforms] = useState(['FE', 'BE']);
+  const [selectedPlatforms, setSelectedPlatforms] = useState(isDevMode ? ['BE'] : ['FE', 'BE']);
   const [extraGuidance, setExtraGuidance] = useState('');
   const [customImage, setCustomImage] = useState(null);
   const [useAi, setUseAi] = useState(false);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [inputError, setInputError] = useState('');
 
   // Aşama 2: Üretim ve Düzenleme Durumları
@@ -145,8 +148,8 @@ export default function SubtaskDrawer({
         });
         handleReset();
         onClose();
-      } else if (!useAi) {
-        // Test modda AI kapalı: içeriği boş test subtask'larını direkt oluştur
+      } else if (!useAi || !getAiConfig().hasToken) {
+        // Test modda AI kapalı VEYA kullanıcı token eklememişse: doğrudan boş test subtask'ı aç
         const [storyInfo] = await Promise.all([
           jiraService.fetchStory(cleanKey),
           new Promise((resolve) => setTimeout(resolve, 1000)),
@@ -163,7 +166,7 @@ export default function SubtaskDrawer({
         handleReset();
         onClose();
       } else {
-        // Test modda: Gemini ile senaryo üret (Jira ekli görselleri + kullanıcının eklediği görseli analiz eder)
+        // Test modda: AI ile senaryo üret (Jira ekli görselleri + kullanıcının eklediği görseli analiz eder)
         const result = await geminiService.generatePlatformScenarios({
           storyKey: cleanKey,
           platforms: selectedPlatforms,
@@ -258,7 +261,7 @@ export default function SubtaskDrawer({
 
   const handleReset = () => {
     setStoryKey('');
-    setSelectedPlatforms(['FE', 'BE']);
+    setSelectedPlatforms(isDevMode ? ['BE'] : ['FE', 'BE']);
     setExtraGuidance('');
     if (customImage?.previewUrl) {
       URL.revokeObjectURL(customImage.previewUrl);
@@ -350,7 +353,14 @@ export default function SubtaskDrawer({
                 isGenerating={isGenerating}
                 isDevMode={isDevMode}
                 useAi={useAi}
-                onUseAiChange={setUseAi}
+                onUseAiChange={(checked) => {
+                  setUseAi(checked);
+                  // Kullanıcı yapay zeka tikini işaretlediğinde eğer token yoksa popup açılsın
+                  if (checked && !getAiConfig().hasToken) {
+                    setIsAiModalOpen(true);
+                  }
+                }}
+                onOpenAiModal={() => setIsAiModalOpen(true)}
               />
             )}
 
@@ -432,6 +442,12 @@ export default function SubtaskDrawer({
 
         </div>
       </div>
+
+      {/* AI Token Ayar Modalı */}
+      <AiTokenModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+      />
 
     </div>
   );

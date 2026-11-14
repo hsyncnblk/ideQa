@@ -7,12 +7,16 @@ import {
   Eye,
   EyeOff,
   Lock,
-  Mail
+  Mail,
+  Globe
 } from 'lucide-react';
 import { envConfig } from '../../config/envConfig';
 import { jiraService } from '../../services/jiraService';
 
 export default function LoginScreen({ onLoginSuccess }) {
+  const [jiraUrl, setJiraUrl] = useState(
+    localStorage.getItem('jira_custom_base_url') || envConfig.jira.baseUrl || ''
+  );
   const [email, setEmail] = useState('');
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
@@ -21,6 +25,10 @@ export default function LoginScreen({ onLoginSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!jiraUrl.trim()) {
+      setError('Lütfen Jira adresinizi girin (Örn: firmaniz.atlassian.net).');
+      return;
+    }
     if (!email.trim()) {
       setError('Lütfen Jira e-posta adresinizi girin.');
       return;
@@ -30,14 +38,20 @@ export default function LoginScreen({ onLoginSuccess }) {
       return;
     }
 
+    // URL'i normalize et (örn: sirket.atlassian.net -> https://sirket.atlassian.net)
+    let cleanUrl = jiraUrl.trim().replace(/\/+$/, '');
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+
     setError('');
     setIsLoading(true);
 
     try {
-      const userInfo = await jiraService.validateToken(email.trim(), token.trim());
-      onLoginSuccess(token.trim(), userInfo);
+      const userInfo = await jiraService.validateToken(email.trim(), token.trim(), cleanUrl);
+      onLoginSuccess(token.trim(), userInfo, cleanUrl);
     } catch (err) {
-      setError(err.message || 'Token doğrulanamadı. Lütfen tekrar deneyin.');
+      setError(err.message || 'Giriş doğrulanamadı. Lütfen bilgilerinizi kontrol edin.');
     } finally {
       setIsLoading(false);
     }
@@ -51,7 +65,7 @@ export default function LoginScreen({ onLoginSuccess }) {
       <div className="absolute bottom-1/3 -right-20 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl pointer-events-none"></div>
 
       {/* Başlık Alanı */}
-      <div className="text-center mb-8 z-10">
+      <div className="text-center mb-6 z-10">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl jira-gradient-bg text-white shadow-lg mb-3">
           <Layers className="w-6 h-6" />
         </div>
@@ -65,7 +79,7 @@ export default function LoginScreen({ onLoginSuccess }) {
 
       {/* Giriş Kartı */}
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200/80 p-6 sm:p-7 z-10">
-        <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-100">
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
           <div>
             <h2 className="text-base font-bold text-slate-900">Giriş Yap</h2>
             <p className="text-xs text-slate-500">Atlassian hesap bilgilerinizi girin</p>
@@ -77,6 +91,28 @@ export default function LoginScreen({ onLoginSuccess }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3.5">
+          {/* Jira URL / Site Alanı */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Jira Adresi (Domain)
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <Globe className="w-4 h-4" />
+              </div>
+              <input
+                type="text"
+                value={jiraUrl}
+                onChange={(e) => {
+                  setJiraUrl(e.target.value);
+                  if (error) setError('');
+                }}
+                placeholder="sirketiniz.atlassian.net"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-jira-500 focus:ring-jira-100 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all"
+              />
+            </div>
+          </div>
+
           {/* Email Alanı */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -94,8 +130,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                   if (error) setError('');
                 }}
                 placeholder="ornek@sirket.com"
-                className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border ${error && !email.trim() ? 'border-rose-400 focus:ring-rose-200' : 'border-slate-200 focus:border-jira-500 focus:ring-jira-100'
-                  } text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all`}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-jira-500 focus:ring-jira-100 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all"
               />
             </div>
           </div>
@@ -117,8 +152,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                   if (error) setError('');
                 }}
                 placeholder="ATATT3xFfGF0ciZL..."
-                className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-50 border ${error && email.trim() && !token.trim() ? 'border-rose-400 focus:ring-rose-200' : 'border-slate-200 focus:border-jira-500 focus:ring-jira-100'
-                  } text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all`}
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-jira-500 focus:ring-jira-100 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all"
               />
               <button
                 type="button"
@@ -130,7 +164,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             </div>
 
             {error && (
-              <p className="mt-1 text-xs text-rose-600 font-medium">
+              <p className="mt-1.5 text-xs text-rose-600 font-medium">
                 {error}
               </p>
             )}
@@ -162,7 +196,7 @@ export default function LoginScreen({ onLoginSuccess }) {
         <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-500">
           <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           <p className="text-[11px] leading-tight">
-            Bilgileriniz yalnızca yerel oturumunuzda tutulur.
+            Bilgileriniz yalnızca tarayıcınızın yerel oturumunda tutulur.
           </p>
         </div>
       </div>

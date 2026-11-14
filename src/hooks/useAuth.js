@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MP_TEAMS } from '../constants/jiraConstants';
+import { envConfig } from '../config/envConfig';
 
 // localStorage anahtarları
 const STORAGE_KEYS = {
@@ -8,6 +9,7 @@ const STORAGE_KEYS = {
   token: 'jira_token',
   user: 'jira_current_user',
   email: 'jira_email',
+  jiraUrl: 'jira_custom_base_url',
 };
 
 export function useAuth() {
@@ -15,6 +17,7 @@ export function useAuth() {
   const savedToken = localStorage.getItem(STORAGE_KEYS.token) || '';
   const savedUser = localStorage.getItem(STORAGE_KEYS.user) || '';
   const savedEmail = localStorage.getItem(STORAGE_KEYS.email) || '';
+  const savedJiraUrl = localStorage.getItem(STORAGE_KEYS.jiraUrl) || '';
   const savedTeam = localStorage.getItem(STORAGE_KEYS.team);
   const savedSetupDone = localStorage.getItem(STORAGE_KEYS.setupDone) === 'true';
 
@@ -25,11 +28,12 @@ export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!savedToken);
   const [jiraToken, setJiraToken] = useState(savedToken);
   const [jiraEmail, setJiraEmail] = useState(savedEmail);
+  const [jiraUrl, setJiraUrl] = useState(savedJiraUrl || envConfig.jira.baseUrl);
   const [currentUser, setCurrentUser] = useState(savedUser);
   const [selectedTeam, setSelectedTeam] = useState(isTeamValid ? savedTeam : MP_TEAMS[0].name);
   const [isSetupComplete, setIsSetupComplete] = useState(effectiveSetupDone);
 
-  const login = (token, userInfo) => {
+  const login = (token, userInfo, customUrl) => {
     const displayName = userInfo?.displayName || 'Kullanıcı';
     const email = userInfo?.emailAddress || '';
     const accountId = userInfo?.accountId || '';
@@ -43,6 +47,11 @@ export function useAuth() {
     localStorage.setItem(STORAGE_KEYS.user, displayName);
     localStorage.setItem(STORAGE_KEYS.email, email);
     localStorage.setItem('jira_account_id', accountId);
+
+    if (customUrl) {
+      setJiraUrl(customUrl);
+      localStorage.setItem(STORAGE_KEYS.jiraUrl, customUrl);
+    }
 
     // Daha önce geçerli bir takım seçilmişse modal'ı tekrar gösterme
     if (!effectiveSetupDone) {
@@ -71,13 +80,14 @@ export function useAuth() {
     localStorage.removeItem(STORAGE_KEYS.token);
     localStorage.removeItem(STORAGE_KEYS.user);
     localStorage.removeItem(STORAGE_KEYS.email);
-    // Setup durumunu sıfırlama — takım seçimi kalıcı
+    // Setup ve custom Jira URL durumunu koruyabiliriz
   };
 
   return {
     isAuthenticated,
     jiraToken,
     jiraEmail,
+    jiraUrl,
     isSetupComplete,
     selectedTeam,
     setSelectedTeam: handleSetSelectedTeam,

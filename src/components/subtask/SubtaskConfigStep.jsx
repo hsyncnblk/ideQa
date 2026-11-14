@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   ArrowRight, 
@@ -8,9 +8,11 @@ import {
   Globe, 
   Check,
   Code2,
-  FileText
+  FileText,
+  Key
 } from 'lucide-react';
 import { SAMPLE_STORIES } from '../../constants/jiraConstants';
+import { getAiConfig } from '../../core/aiConfig';
 
 const AVAILABLE_PLATFORMS = [
   { id: 'App', label: 'App', fullName: 'Mobil Uygulama', tech: 'Appium', icon: Smartphone },
@@ -34,7 +36,17 @@ export default function SubtaskConfigStep({
   isDevMode = false,
   useAi = false,
   onUseAiChange,
+  onOpenAiModal,
 }) {
+  const [aiConfig, setAiConfig] = useState(getAiConfig());
+
+  useEffect(() => {
+    const handleStorage = () => setAiConfig(getAiConfig());
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  const providerName = aiConfig.provider === 'claude' ? 'Claude' : 'Gemini';
   // Dev modda virgülle ayrılmış birden fazla story girilebilir
   const enteredKeys = storyKey
     .split(/[,;\s]+/)
@@ -171,39 +183,64 @@ export default function SubtaskConfigStep({
 
       {/* Yapay Zeka ile İçerik Üretimi Seçimi (sadece Test modu) */}
       {!isDevMode && (
-        <label
-          className={`flex items-start gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
-            useAi
-              ? 'border-jira-600 bg-jira-50/60 ring-2 ring-jira-100'
-              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={useAi}
-            onChange={(e) => onUseAiChange && onUseAiChange(e.target.checked)}
-            disabled={isGenerating}
-            className="sr-only"
-          />
-          <div
-            className={`w-5 h-5 mt-0.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
-              useAi ? 'bg-jira-600 border-jira-600 text-white' : 'border-slate-300 bg-white'
+        <div className="space-y-2">
+          <label
+            className={`flex items-start gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+              useAi
+                ? 'border-jira-600 bg-jira-50/60 ring-2 ring-jira-100'
+                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
             }`}
           >
-            {useAi && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-          </div>
-          <div className="flex-1 min-w-0">
-            <span className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              Yapay zeka ile içerik üretilsin mi?
-            </span>
-            <span className="text-[11px] text-slate-500 block mt-0.5">
-              {useAi
-                ? 'Gemini, Story ve görselleri analiz ederek test senaryolarını üretir; önizleyip düzenledikten sonra Jira\'ya gönderirsiniz.'
-                : 'Seçili platformlar için içeriği boş test subtask\'ları doğrudan Jira\'da açılır.'}
-            </span>
-          </div>
-        </label>
+            <input
+              type="checkbox"
+              checked={useAi}
+              onChange={(e) => onUseAiChange && onUseAiChange(e.target.checked)}
+              disabled={isGenerating}
+              className="sr-only"
+            />
+            <div
+              className={`w-5 h-5 mt-0.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+                useAi ? 'bg-jira-600 border-jira-600 text-white' : 'border-slate-300 bg-white'
+              }`}
+            >
+              {useAi && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                Yapay zeka ile içerik üretilsin mi?
+              </span>
+              <span className="text-[11px] text-slate-500 block mt-0.5">
+                {useAi
+                  ? `${providerName} ile Story ve ekli görseller analiz edilerek test senaryoları üretilir.`
+                  : 'Seçili platformlar için içeriği boş test subtask\'ları doğrudan Jira\'da açılır.'}
+              </span>
+            </div>
+          </label>
+
+          {/* AI seçili olduğunda aktif model ve token durumu bilgisi */}
+          {useAi && (
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-purple-50/70 border border-purple-200 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-purple-900 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-purple-600" />
+                  Aktif Model: {providerName}
+                </span>
+                <span className="text-[11px] text-purple-700">
+                  {aiConfig.hasToken ? '✓ Token tanımlı' : '⚠️ Token girilmemiş (boş senaryo açılır)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenAiModal}
+                className="text-[11px] font-bold text-purple-700 hover:text-purple-900 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Key className="w-3 h-3" />
+                <span>Değiştir / Token Gir</span>
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* 3. Ek Yönlendirme & Ekran Görüntüsü / Tasarım Yükleme (Opsiyonel) */}
