@@ -107,7 +107,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                   setJiraUrl(e.target.value);
                   if (error) setError('');
                 }}
-                placeholder="sirketiniz.atlassian.net"
+                placeholder="turkuvaz-jira.atlassian.net"
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-jira-500 focus:ring-jira-100 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all"
               />
             </div>

@@ -11,9 +11,11 @@ import {
   ShieldAlert,
   Terminal
 } from 'lucide-react';
+import { getTeamJiraMapping } from '../../constants/jiraConstants';
 
 export default function TestScenarioPreview({ scenario, selectedTeam }) {
   const [copied, setCopied] = useState(false);
+  const teamMapping = getTeamJiraMapping(selectedTeam);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(scenario.markdownContent);
@@ -35,11 +37,19 @@ export default function TestScenarioPreview({ scenario, selectedTeam }) {
             <span className="inline-flex items-center gap-1 font-mono font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded border border-emerald-300">
               <Tag className="w-3 h-3" /> otomasyon_ai
             </span>{' '}
-            etiketi ve{' '}
+            etiketi,{' '}
             <span className="inline-flex items-center gap-1 font-bold text-jira-800 bg-blue-100/90 px-1.5 py-0.5 rounded border border-blue-300">
-              <Users className="w-3 h-3" /> MPTeam: {selectedTeam}
-            </span>{' '}
-            alanı otomatik olarak tanımlanacaktır.
+              <Users className="w-3 h-3" /> MP TEAM: {teamMapping.mpTeam || selectedTeam}
+            </span>
+            {teamMapping.component && (
+              <>
+                {' '}ve{' '}
+                <span className="inline-flex items-center gap-1 font-bold text-purple-800 bg-purple-100/90 px-1.5 py-0.5 rounded border border-purple-300">
+                  Bileşen: {teamMapping.component}
+                </span>
+              </>
+            )}
+            {' '}otomatik olarak tanımlanacaktır.
           </div>
         </div>
       </div>
@@ -146,7 +156,10 @@ export default function TestScenarioPreview({ scenario, selectedTeam }) {
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                 <span className="px-2 py-1 bg-slate-100 rounded text-slate-700 font-medium">Tür: Sub-task</span>
                 <span className="px-2 py-1 bg-emerald-100 text-emerald-800 rounded font-semibold">Etiket: otomasyon_ai</span>
-                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded font-semibold">MPTeam: {selectedTeam}</span>
+                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded font-semibold">MP TEAM: {teamMapping.mpTeam || selectedTeam}</span>
+                {teamMapping.component && (
+                  <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded font-semibold">Bileşen: {teamMapping.component}</span>
+                )}
                 <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded font-semibold">Efor: 2 SP</span>
               </div>
             </div>

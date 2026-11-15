@@ -9,6 +9,7 @@ import {
   CheckCheck
 } from 'lucide-react';
 import EditableScenarioCard from './EditableScenarioCard';
+import { getTeamJiraMapping } from '../../constants/jiraConstants';
 
 const PLATFORM_ICONS = {
   App: Smartphone,
@@ -27,6 +28,7 @@ export default function PlatformTabsPreview({
   const [activeTab, setActiveTab] = useState(platformKeys[0] || 'FE');
 
   const currentPlatformData = scenariosByPlatform[activeTab] || scenariosByPlatform[platformKeys[0]];
+  const teamMapping = getTeamJiraMapping(selectedTeam);
 
   if (!currentPlatformData) return null;
 
@@ -49,8 +51,13 @@ export default function PlatformTabsPreview({
                 <Tag className="w-2.5 h-2.5" /> otomasyon_ai
               </span>
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-jira-800 bg-blue-100 px-1.5 py-0.5 rounded border border-blue-300">
-                <Users className="w-2.5 h-2.5" /> MPTeam: {selectedTeam}
+                <Users className="w-2.5 h-2.5" /> MP TEAM: {teamMapping.mpTeam || selectedTeam}
               </span>
+              {teamMapping.component && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-800 bg-purple-100 px-1.5 py-0.5 rounded border border-purple-300">
+                  Bileşen: {teamMapping.component}
+                </span>
+              )}
             </div>
           </div>
         </div>

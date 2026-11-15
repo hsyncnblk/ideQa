@@ -18,11 +18,27 @@ export function useAuth() {
   const savedUser = localStorage.getItem(STORAGE_KEYS.user) || '';
   const savedEmail = localStorage.getItem(STORAGE_KEYS.email) || '';
   const savedJiraUrl = localStorage.getItem(STORAGE_KEYS.jiraUrl) || '';
-  const savedTeam = localStorage.getItem(STORAGE_KEYS.team);
+  let savedTeam = localStorage.getItem(STORAGE_KEYS.team);
   const savedSetupDone = localStorage.getItem(STORAGE_KEYS.setupDone) === 'true';
 
-  // Kayıtlı takım listede hâlâ var mı kontrol et
-  const isTeamValid = savedTeam && MP_TEAMS.some(t => t.name === savedTeam);
+  // Eski takım isimlerini otomatik migrate et (Vendor -> Vendor Rangers, CMS -> TheCodeFather)
+  if (savedTeam === 'Vendor') {
+    savedTeam = 'Vendor Rangers';
+    localStorage.setItem(STORAGE_KEYS.team, 'Vendor Rangers');
+  } else if (savedTeam === 'CMS') {
+    savedTeam = 'TheCodeFather';
+    localStorage.setItem(STORAGE_KEYS.team, 'TheCodeFather');
+  } else if (savedTeam === 'CEO') {
+    savedTeam = 'Ceo';
+    localStorage.setItem(STORAGE_KEYS.team, 'Ceo');
+  }
+
+  // Kayıtlı takım listede hâlâ var mı kontrol et (büyük/küçük harf toleranslı)
+  const matchedTeam = savedTeam
+    ? MP_TEAMS.find((t) => t.name.toLowerCase() === savedTeam.toLowerCase())
+    : null;
+  const isTeamValid = Boolean(matchedTeam);
+  const resolvedTeam = matchedTeam ? matchedTeam.name : MP_TEAMS[0].name;
   const effectiveSetupDone = savedSetupDone && isTeamValid;
 
   const [isAuthenticated, setIsAuthenticated] = useState(!!savedToken);
@@ -30,7 +46,7 @@ export function useAuth() {
   const [jiraEmail, setJiraEmail] = useState(savedEmail);
   const [jiraUrl, setJiraUrl] = useState(savedJiraUrl || envConfig.jira.baseUrl);
   const [currentUser, setCurrentUser] = useState(savedUser);
-  const [selectedTeam, setSelectedTeam] = useState(isTeamValid ? savedTeam : MP_TEAMS[0].name);
+  const [selectedTeam, setSelectedTeam] = useState(resolvedTeam);
   const [isSetupComplete, setIsSetupComplete] = useState(effectiveSetupDone);
 
   const login = (token, userInfo, customUrl) => {

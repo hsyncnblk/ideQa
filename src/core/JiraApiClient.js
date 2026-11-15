@@ -7,7 +7,7 @@
  */
 
 import { envConfig } from '../config/envConfig';
-import { JiraApiError, logError } from './ErrorHandler';
+import { JiraApiError, logError, extractJiraErrorMessages } from './ErrorHandler';
 
 class JiraApiClient {
   /**
@@ -112,8 +112,12 @@ class JiraApiClient {
 
     if (!response.ok) {
       const errorText = await response.text();
+      const extracted = extractJiraErrorMessages(errorText);
+      const friendlyMsg = extracted.length > 0 
+        ? extracted.join('\n') 
+        : `Jira API hatası: ${response.status}`;
       throw new JiraApiError(
-        `Jira API hatası: ${response.status}`,
+        friendlyMsg,
         response.status,
         errorText
       );
@@ -140,8 +144,12 @@ class JiraApiClient {
 
     if (!response.ok) {
       const errorText = await response.text();
+      const extracted = extractJiraErrorMessages(errorText);
+      const friendlyMsg = extracted.length > 0 
+        ? extracted.join('\n') 
+        : `Jira API hatası: ${response.status}`;
       throw new JiraApiError(
-        `Jira API hatası: ${response.status}`,
+        friendlyMsg,
         response.status,
         errorText
       );
@@ -224,6 +232,7 @@ class JiraApiClient {
   async _handleHttpError(response, context) {
     const errorText = await response.text().catch(() => '');
     const status = response.status;
+    const extracted = extractJiraErrorMessages(errorText);
 
     const messages = {
       401: 'Geçersiz e-posta veya token. Lütfen kontrol edin.',
@@ -231,7 +240,9 @@ class JiraApiClient {
       404: 'Aradığınız kayıt bulunamadı. Numarayı kontrol edin.',
     };
 
-    const message = messages[status] || `Jira bağlantı hatası (HTTP ${status})`;
+    const message = extracted.length > 0
+      ? extracted.join('\n')
+      : (messages[status] || `Jira bağlantı hatası (HTTP ${status})`);
     logError(`JiraApiClient.${context}`, new Error(`${message} — ${errorText}`));
     throw new JiraApiError(message, status, errorText);
   }

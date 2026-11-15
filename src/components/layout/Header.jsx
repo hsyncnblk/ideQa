@@ -109,8 +109,15 @@ export default function Header({
                             }`}
                         >
                           <div>
-                            <p className="font-semibold">{team.name}</p>
-                            <p className="text-[10px] text-slate-400">{team.domain}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-semibold">{team.name}</p>
+                              {team.component && (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-50 text-blue-700 font-mono font-medium border border-blue-200">
+                                  {team.component}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400">MP TEAM: {team.mpTeam || team.domain}</p>
                           </div>
                           {selectedTeam === team.name && (
                             <Check className="w-3.5 h-3.5 text-jira-600 flex-shrink-0" />

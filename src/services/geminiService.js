@@ -77,7 +77,7 @@ export const geminiService = {
     storyKey,
     platforms = ['FE'],
     extraGuidance = '',
-    teamName = 'Team Alpha',
+    teamName = 'Search',
     customImage = null,
   }) {
     const formattedKey = formatStoryKey(storyKey);
@@ -188,7 +188,7 @@ Senaryoları BDD (Given/When/Then) formatında DEĞİL, yapılandırılmış pro
     textDescription = '',
     imageFile = null,
     extraGuidance = '',
-    teamName = 'Team Alpha',
+    teamName = 'Search',
   }) {
     let sourceContent = '';
     let formattedKey = '';

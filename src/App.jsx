@@ -12,6 +12,7 @@ import BugDrawer from './components/bug/BugDrawer';
 import PlanningPokerDrawer from './components/poker/PlanningPokerDrawer';
 import StatsModal from './components/stats/StatsModal';
 import AiTokenModal from './components/shared/AiTokenModal';
+import JiraErrorModal from './components/shared/JiraErrorModal';
 import { useAuth } from './hooks/useAuth';
 import { useSubtasks } from './hooks/useSubtasks';
 
@@ -44,6 +45,7 @@ export default function App() {
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const [jiraErrorModal, setJiraErrorModal] = useState(null);
 
   const handleStoryCreated = (result) => {
     setToast({
@@ -99,7 +101,14 @@ export default function App() {
     }
 
     if (results.length === 0) {
-      throw failures[0]?.error || new Error('Subtask oluşturulamadı.');
+      const firstFailure = failures[0];
+      const err = firstFailure?.error || new Error('Subtask oluşturulamadı.');
+      setJiraErrorModal({
+        title: 'Jira Subtask Onayı Alınamadı',
+        storyKey: firstFailure?.storyKey || targets[0]?.storyKey,
+        error: err,
+      });
+      throw err;
     }
 
     const totalCount = results.reduce((sum, r) => sum + (r.count || 0), 0);
@@ -115,6 +124,14 @@ export default function App() {
       platforms: [...new Set(results.flatMap((r) => r.platforms || []))],
       subtaskKey: results[0].subtasks[0]?.id,
     });
+
+    if (failures.length > 0) {
+      setJiraErrorModal({
+        title: 'Bazı Story\'ler İçin Subtask Oluşturulamadı',
+        storyKey: failures.map((f) => f.storyKey).join(', '),
+        error: failures[0]?.error,
+      });
+    }
   };
 
   const handleIpkCreated = (result) => {
@@ -238,6 +255,13 @@ export default function App() {
 
           {/* 6. Jira Başarı Toast Bildirimi */}
           <Toast toast={toast} onClose={() => setToast(null)} />
+
+          {/* 7. Jira Hata & Kural Uyarısı Popup Modalı */}
+          <JiraErrorModal
+            isOpen={Boolean(jiraErrorModal)}
+            onClose={() => setJiraErrorModal(null)}
+            {...(jiraErrorModal || {})}
+          />
         </>
       )}
 

@@ -9,6 +9,7 @@
 import React, { useState, useCallback } from 'react';
 import { FileText, Sparkles, Send, RotateCcw, Users, Plus, Trash2, ImageIcon, Paperclip } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { getTeamJiraMapping } from '../../constants/jiraConstants';
 import { geminiService } from '../../services/geminiService';
 import { jiraService } from '../../services/jiraService';
 import { useFileUpload } from '../../hooks/useFileUpload';
@@ -130,7 +131,15 @@ ${generatedStory.technicalNotes ? `h2. ⚙️ Teknik Notlar & Mimari\n${generate
               </div>
               <div>
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Hedef Takım / Board</div>
-                <div className="text-sm font-bold text-slate-800">{selectedTeam}</div>
+                <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>{selectedTeam}</span>
+                  {getTeamJiraMapping(selectedTeam).component && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-mono font-medium border border-blue-200">
+                      {getTeamJiraMapping(selectedTeam).component}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">MP TEAM: {getTeamJiraMapping(selectedTeam).mpTeam || selectedTeam}</p>
               </div>
             </div>
             <div className="text-right">

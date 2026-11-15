@@ -1,7 +1,8 @@
 import React from 'react';
-import { Users, Tag, CheckCircle2 } from 'lucide-react';
+import { Users } from 'lucide-react';
 import ActionGrid from './ActionGrid';
 import RecentActivity from './RecentActivity';
+import { getTeamJiraMapping } from '../../constants/jiraConstants';
 
 export default function Dashboard({
   user = 'Hüseyin Ç.',
@@ -34,6 +35,11 @@ export default function Dashboard({
           <Users className="w-3.5 h-3.5 text-jira-600" />
           <span className="text-slate-400">Takım:</span>
           <span className="font-bold text-slate-800">{selectedTeam}</span>
+          {getTeamJiraMapping(selectedTeam).component && (
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-mono font-medium border border-blue-200">
+              {getTeamJiraMapping(selectedTeam).component}
+            </span>
+          )}
         </div>
       </div>
 

@@ -8,7 +8,7 @@
  */
 
 import { envConfig } from '../config/envConfig';
-import { FIXED_AUTOMATION_LABEL, DEFAULT_USER } from '../constants/jiraConstants';
+import { FIXED_AUTOMATION_LABEL, DEFAULT_USER, getTeamJiraMapping } from '../constants/jiraConstants';
 import { jiraApiClient } from '../core/JiraApiClient';
 import { JiraApiError, logError } from '../core/ErrorHandler';
 import { markdownToJira } from '../utils/jiraMarkup';
@@ -59,14 +59,16 @@ async function resolveProjectKey({ projectKey = null, storyKey = null, team = ''
 }
 
 /**
- * Builds reporter/assignee fields if accountId is available.
+ * Builds assignee fields if accountId is available.
+ * Note: 'reporter' is intentionally excluded because Jira automatically sets the
+ * authenticated API user as reporter; explicitly passing 'reporter' causes HTTP 400
+ * when the field is hidden on the project's create issue screen.
  * @returns {object}
  */
 function buildOwnerFields() {
   const { accountId } = jiraApiClient.getAuth();
   if (!accountId) return {};
   return {
-    reporter: { id: accountId },
     assignee: { id: accountId },
   };
 }
@@ -84,6 +86,151 @@ function appendAttachmentList(description, attachments = [], sectionTitle = '�
     .map((att, idx) => `* ${idx + 1}. *${att.name}* (${att.sizeMb} MB)`)
     .join('\n');
   return `${description}\n\nh2. ${sectionTitle} (${attachments.length} Adet)\n${listText}`;
+}
+
+// ── Jira MP TEAM & Component Field Resolution ────────────────────────────────
+
+let cachedMpTeamField = null;
+
+/**
+ * Resolves the Jira customfield metadata for "MP TEAM".
+ * Priority:
+ * 1. envConfig.jira.mpTeamFieldId (e.g. from VITE_JIRA_MP_TEAM_FIELD_ID)
+ * 2. In-memory cached field
+ * 3. Dynamic lookup via /rest/api/2/field searching for "MP TEAM"
+ *
+ * @returns {Promise<{ id: string, schema?: object } | null>}
+ */
+export async function resolveMpTeamField() {
+  if (cachedMpTeamField !== null) {
+    return cachedMpTeamField;
+  }
+
+  if (envConfig.jira.mpTeamFieldId) {
+    cachedMpTeamField = { id: envConfig.jira.mpTeamFieldId };
+    return cachedMpTeamField;
+  }
+
+  try {
+    const fields = await jiraApiClient.get('/rest/api/2/field');
+    if (Array.isArray(fields)) {
+      const match = fields.find((f) => {
+        if (!f.name) return false;
+        const normalized = f.name.trim().toLowerCase().replace(/[\s_-]+/g, '');
+        return normalized === 'mpteam' || normalized === 'marketplaceteam';
+      });
+      if (match) {
+        cachedMpTeamField = match;
+        return match;
+      }
+    }
+  } catch (err) {
+    logError('jiraService.resolveMpTeamField', err);
+  }
+
+  return null;
+}
+
+/**
+ * Builds Jira payload fields for team mapping:
+ * - components: [{ name: '...' }] (omitted when empty / "(Boş)")
+ * - [customfield_id]: MP TEAM value (omitted when empty / "(Boş)" or field not resolved)
+ *
+ * @param {string} teamName
+ * @returns {Promise<{ fields: object, mapping: { component: string | null, mpTeam: string | null } }>}
+ */
+export async function buildTeamFields(teamName) {
+  const mapping = getTeamJiraMapping(teamName);
+  const fields = {};
+
+  // 1. Bileşenler (Components)
+  // "(Boş)" olarak belirtilen durumlarda ilgili alan boş bırakılmalı veya herhangi bir değer atanmamalıdır.
+  if (mapping.component && mapping.component.trim()) {
+    fields.components = [{ name: mapping.component.trim() }];
+  }
+
+  // 2. MP TEAM
+  if (mapping.mpTeam && mapping.mpTeam.trim()) {
+    const mpField = await resolveMpTeamField();
+    if (mpField && mpField.id) {
+      const type = mpField.schema?.type;
+      if (type === 'array') {
+        fields[mpField.id] = [{ value: mapping.mpTeam.trim() }];
+      } else if (type === 'option') {
+        fields[mpField.id] = { value: mapping.mpTeam.trim() };
+      } else {
+        fields[mpField.id] = mapping.mpTeam.trim();
+      }
+    }
+  }
+
+  return { fields, mapping };
+}
+
+/**
+ * Safely posts an issue to Jira with graceful retry if a field (reporter, assignee,
+ * component, or customfield) is not configured or exposed on the create screen.
+ *
+ * @param {object} payload
+ * @returns {Promise<any>}
+ */
+async function postIssueSafe(payload) {
+  let currentPayload = { ...payload, fields: { ...payload.fields } };
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await jiraApiClient.post('/rest/api/2/issue', currentPayload);
+    } catch (error) {
+      if (attempt === maxAttempts) throw error;
+
+      let errorObj = null;
+      try {
+        errorObj = JSON.parse(error.responseBody || '{}');
+      } catch {
+        // responseBody is not JSON
+      }
+
+      const errorText = `${error?.message || ''} ${error?.responseBody || ''}`;
+      const errors = errorObj?.errors || {};
+      let modified = false;
+
+      // 1. Jira tarafından dönen field hatalarını (örn. reporter, assignee, customfield, vb.) tespit edip kaldır
+      for (const fieldName of Object.keys(errors)) {
+        if (currentPayload.fields[fieldName] !== undefined) {
+          delete currentPayload.fields[fieldName];
+          modified = true;
+        }
+      }
+
+      // 2. Metin içinde geçen component hatası fallback'i
+      if (currentPayload.fields.components && /component/i.test(errorText)) {
+        delete currentPayload.fields.components;
+        modified = true;
+      }
+
+      // 3. Reporter / Assignee hata fallback'i
+      if (currentPayload.fields.reporter && /reporter/i.test(errorText)) {
+        delete currentPayload.fields.reporter;
+        modified = true;
+      }
+      if (currentPayload.fields.assignee && /assignee/i.test(errorText)) {
+        delete currentPayload.fields.assignee;
+        modified = true;
+      }
+
+      // 4. MP TEAM custom field fallback'i
+      if (cachedMpTeamField?.id && currentPayload.fields[cachedMpTeamField.id] && errorText.includes(cachedMpTeamField.id)) {
+        delete currentPayload.fields[cachedMpTeamField.id];
+        modified = true;
+      }
+
+      // Eğer hiçbir alan çıkarılamadıysa hatayı yukarı fırlat
+      if (!modified) {
+        throw error;
+      }
+    }
+  }
 }
 
 // ── Jira Service ──────────────────────────────────────────────────────────────
@@ -234,6 +381,7 @@ export const jiraService = {
   async createStory({ projectKey = null, summary, description, team = '', attachments = [] }) {
     const resolvedKey = await resolveProjectKey({ projectKey, team });
     const finalDescription = appendAttachmentList(description || '', attachments);
+    const { fields: teamFields } = await buildTeamFields(team);
 
     const payload = {
       fields: {
@@ -242,12 +390,13 @@ export const jiraService = {
         description: finalDescription.trim(),
         issuetype: { name: 'Story' },
         labels: [FIXED_AUTOMATION_LABEL],
+        ...teamFields,
         ...buildOwnerFields(),
       },
     };
 
     try {
-      const data = await jiraApiClient.post('/rest/api/2/issue', payload);
+      const data = await postIssueSafe(payload);
       const storyKey = data.key;
 
       if (attachments.length > 0) {
@@ -292,6 +441,7 @@ export const jiraService = {
 
     const isBug = type === 'bug';
     const issueTypeName = isBug ? 'Bug' : 'Task';
+    const { fields: teamFields } = await buildTeamFields(team);
 
     const payload = {
       fields: {
@@ -300,6 +450,7 @@ export const jiraService = {
         description: finalDescription.trim(),
         issuetype: { name: issueTypeName },
         labels: [FIXED_AUTOMATION_LABEL],
+        ...teamFields,
         ...buildOwnerFields(),
         ...(storyKey ? { parent: { key: storyKey } } : {}),
       },
@@ -308,12 +459,12 @@ export const jiraService = {
     try {
       let data;
       try {
-        data = await jiraApiClient.post('/rest/api/2/issue', payload);
+        data = await postIssueSafe(payload);
       } catch (firstErr) {
         // Fallback: retry without parent if not permitted
         if (payload.fields.parent) {
           delete payload.fields.parent;
-          data = await jiraApiClient.post('/rest/api/2/issue', payload);
+          data = await postIssueSafe(payload);
         } else {
           throw firstErr;
         }
@@ -362,6 +513,7 @@ export const jiraService = {
   }) {
     const projectKey = storyKey.includes('-') ? storyKey.split('-')[0] : 'MP';
     const createdSubtasks = [];
+    const { fields: teamFields } = await buildTeamFields(team);
 
     for (const platform of selectedPlatforms) {
       const prefix = isDevMode ? '' : 'Test ';
@@ -390,11 +542,12 @@ export const jiraService = {
           description: descriptionText.trim() || 'Senaryo içeriği boş.',
           issuetype: { name: 'Subtask' },
           labels: [FIXED_AUTOMATION_LABEL],
+          ...teamFields,
           ...buildOwnerFields(),
         },
       };
 
-      const data = await jiraApiClient.post('/rest/api/2/issue', payload);
+      const data = await postIssueSafe(payload);
 
       createdSubtasks.push({
         id: data.key,
@@ -472,7 +625,7 @@ export const jiraService = {
    * @param {Object} params
    * @returns {Promise<Object>}
    */
-  async createIpkDemand({ ipkData, storyKey = null, attachments = [] }) {
+  async createIpkDemand({ ipkData, storyKey = null, attachments = [], team = '' }) {
     const g = ipkData.genel || {};
     const e = ipkData.etki_kapsami || {};
     const f = ipkData.finansal_etki || {};
@@ -523,6 +676,8 @@ h2. 💰 Finansal Etki Tahmini
       '📎 Ekli Dosyalar & Dokümanlar'
     );
 
+    const { fields: teamFields } = await buildTeamFields(team);
+
     const payload = {
       fields: {
         project: { key: projectKey },
@@ -530,6 +685,7 @@ h2. 💰 Finansal Etki Tahmini
         description: finalDescription,
         issuetype: { name: 'Task' },
         labels: [FIXED_AUTOMATION_LABEL],
+        ...teamFields,
         ...buildOwnerFields(),
         ...(storyKey ? { parent: { key: storyKey } } : {}),
       },
@@ -538,13 +694,13 @@ h2. 💰 Finansal Etki Tahmini
     try {
       let data;
       try {
-        data = await jiraApiClient.post('/rest/api/2/issue', payload);
+        data = await postIssueSafe(payload);
       } catch (firstErr) {
         // Fallback: retry without parent, switch to Story type
         if (payload.fields.parent) {
           delete payload.fields.parent;
           payload.fields.issuetype = { name: 'Story' };
-          data = await jiraApiClient.post('/rest/api/2/issue', payload);
+          data = await postIssueSafe(payload);
         } else {
           throw firstErr;
         }
@@ -599,7 +755,6 @@ h2. 💰 Finansal Etki Tahmini
       'storyPoints',
     ];
 
-    let updateSuccess = false;
     for (const fieldName of customFieldCandidates) {
       try {
         await jiraApiClient.put(`/rest/api/2/issue/${cleanKey}`, {
@@ -607,9 +762,8 @@ h2. 💰 Finansal Etki Tahmini
             [fieldName]: numPoint,
           },
         });
-        updateSuccess = true;
         break;
-      } catch (err) {
+      } catch (_err) {
         // continue checking next candidate field
       }
     }

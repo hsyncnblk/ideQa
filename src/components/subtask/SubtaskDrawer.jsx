@@ -247,16 +247,20 @@ export default function SubtaskDrawer({
     });
 
     // Ana uygulamaya aktar
-    await onSubtaskCreated({
-      storyKey: generatedResult.storyKey,
-      storySummary: generatedResult.storySummary,
-      platforms: platformsToExport,
-      scenarios: generatedResult.scenarios,
-      team: selectedTeam,
-    });
+    try {
+      await onSubtaskCreated({
+        storyKey: generatedResult.storyKey,
+        storySummary: generatedResult.storySummary,
+        platforms: platformsToExport,
+        scenarios: generatedResult.scenarios,
+        team: selectedTeam,
+      });
 
-    handleReset();
-    onClose();
+      handleReset();
+      onClose();
+    } catch (err) {
+      setInputError(err.message || 'Jira subtask oluşturulamadı.');
+    }
   };
 
   const handleReset = () => {

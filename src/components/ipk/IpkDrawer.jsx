@@ -32,7 +32,7 @@ import { IPK_FORM_SCHEMA, IPK_INITIAL_STATE } from '../../schemas/formSchemas';
 
 const MAX_TEXT_LENGTH = 2000;
 
-export default function IpkDrawer({ isOpen, onClose, selectedTeam = 'Team Alpha', onIpkCreated }) {
+export default function IpkDrawer({ isOpen, onClose, selectedTeam = 'Search', onIpkCreated }) {
   const [mode, setMode] = useState('story');
   const [storyKey, setStoryKey] = useState('SCRUM-5');
   const [storyExtraGuidance, setStoryExtraGuidance] = useState('');
@@ -143,6 +143,7 @@ export default function IpkDrawer({ isOpen, onClose, selectedTeam = 'Team Alpha'
         ipkData: ipkForm,
         storyKey: mode === 'story' ? storyKey.trim() : null,
         attachments: fileUpload.getAllAttachments(),
+        team: selectedTeam,
       });
       onIpkCreated?.(result);
       resetForm();

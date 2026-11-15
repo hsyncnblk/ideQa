@@ -6,6 +6,51 @@
  * instead of being silently swallowed.
  */
 
+/**
+ * Extracts human-readable error messages from Jira API error responses.
+ * Jira typically returns:
+ * - errorMessages: ["Message 1", "Message 2"]
+ * - errors: { field: "Field error message" }
+ *
+ * @param {string|object} responseBody
+ * @returns {string[]}
+ */
+export function extractJiraErrorMessages(responseBody) {
+  if (!responseBody) return [];
+  let parsed = responseBody;
+  if (typeof responseBody === 'string') {
+    try {
+      parsed = JSON.parse(responseBody);
+    } catch {
+      return [responseBody];
+    }
+  }
+
+  const messages = [];
+
+  if (Array.isArray(parsed?.errorMessages) && parsed.errorMessages.length > 0) {
+    for (const msg of parsed.errorMessages) {
+      if (typeof msg === 'string' && msg.trim()) {
+        messages.push(msg.trim());
+      }
+    }
+  }
+
+  if (parsed?.errors && typeof parsed.errors === 'object') {
+    for (const [field, msg] of Object.entries(parsed.errors)) {
+      if (typeof msg === 'string' && msg.trim()) {
+        messages.push(`${field}: ${msg.trim()}`);
+      }
+    }
+  }
+
+  if (messages.length === 0 && parsed?.message) {
+    messages.push(parsed.message);
+  }
+
+  return messages;
+}
+
 // ── Typed Error Classes ───────────────────────────────────────────────────────
 
 export class AppError extends Error {
@@ -21,10 +66,13 @@ export class AppError extends Error {
 export class JiraApiError extends AppError {
   /** @param {string} message  @param {number} httpStatus  @param {string} [responseBody] */
   constructor(message, httpStatus = 0, responseBody = '') {
-    super(message, 'JIRA_API_ERROR', { httpStatus, responseBody });
+    const errorList = extractJiraErrorMessages(responseBody);
+    const resolvedMessage = errorList.length > 0 ? errorList.join('\n') : message;
+    super(resolvedMessage, 'JIRA_API_ERROR', { httpStatus, responseBody, errorList });
     this.name = 'JiraApiError';
     this.httpStatus = httpStatus;
     this.responseBody = responseBody;
+    this.errorList = errorList;
   }
 }
 
@@ -73,6 +121,13 @@ const GEMINI_ERROR_MESSAGES = {
  */
 export function getUserFriendlyMessage(error) {
   if (error instanceof JiraApiError) {
+    if (error.errorList && error.errorList.length > 0) {
+      return error.errorList.join('\n');
+    }
+    const extracted = extractJiraErrorMessages(error.responseBody);
+    if (extracted.length > 0) {
+      return extracted.join('\n');
+    }
     return JIRA_ERROR_MESSAGES[error.httpStatus] 
       || error.message 
       || `Jira bağlantı hatası (HTTP ${error.httpStatus})`;

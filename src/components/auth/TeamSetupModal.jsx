@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, ArrowRight, Sparkles, Building2, ChevronDown } from 'lucide-react';
+import { Users, ArrowRight, Sparkles, ChevronDown } from 'lucide-react';
 import { MP_TEAMS, FIXED_AUTOMATION_LABEL } from '../../constants/jiraConstants';
 
 export default function TeamSetupModal({ onTeamConfirmed }) {
@@ -50,7 +50,7 @@ export default function TeamSetupModal({ onTeamConfirmed }) {
               >
                 {MP_TEAMS.map((team) => (
                   <option key={team.id} value={team.name}>
-                    {team.name} — {team.domain}
+                    {team.name}{team.component ? ` [${team.component}]` : ''} — {team.mpTeam || team.domain}
                   </option>
                 ))}
               </select>
@@ -64,11 +64,12 @@ export default function TeamSetupModal({ onTeamConfirmed }) {
           <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
             <div className="flex items-center justify-between font-semibold text-slate-800">
               <span>{currentTeamObj.name}</span>
-              <span className="text-[11px] text-slate-500 font-normal">Execiton Lead : {currentTeamObj.lead}</span>
+              <span className="text-[11px] text-slate-500 font-normal">Execution Lead: {currentTeamObj.lead}</span>
             </div>
-            <p className="text-[11px] text-slate-500">
-              {currentTeamObj.domain}
-            </p>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+              <span>MP TEAM: <strong className="text-slate-700">{currentTeamObj.mpTeam || currentTeamObj.domain}</strong></span>
+              <span>Bileşen: <strong className="text-slate-700">{currentTeamObj.component || '(Boş)'}</strong></span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200/80 text-xs text-emerald-800">
