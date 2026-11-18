@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { 
-  X, 
-  Sparkles, 
-  Send, 
+import {
+  X,
+  Sparkles,
+  Send,
   RotateCcw,
   Code2,
   Layers,
@@ -19,10 +19,10 @@ import { getAiConfig } from '../../core/aiConfig';
 
 import DevSubtaskLoading from './DevSubtaskLoading';
 
-export default function SubtaskDrawer({ 
-  isOpen, 
-  onClose, 
-  selectedTeam, 
+export default function SubtaskDrawer({
+  isOpen,
+  onClose,
+  selectedTeam,
   onSubtaskCreated,
   isCreatingSubtask,
   mode = 'test' // 'test' | 'dev'
@@ -31,7 +31,7 @@ export default function SubtaskDrawer({
 
   // Aşama 1: Konfigürasyon Durumları
   const [storyKey, setStoryKey] = useState('');
-  const [selectedPlatforms, setSelectedPlatforms] = useState(isDevMode ? ['BE'] : ['FE', 'BE']);
+  const [selectedPlatforms, setSelectedPlatforms] = useState(['BE']);
   const [extraGuidance, setExtraGuidance] = useState('');
   const [customImage, setCustomImage] = useState(null);
   const [useAi, setUseAi] = useState(false);
@@ -266,7 +266,7 @@ export default function SubtaskDrawer({
 
   const handleReset = () => {
     setStoryKey('');
-    setSelectedPlatforms(isDevMode ? ['BE'] : ['FE', 'BE']);
+    setSelectedPlatforms(['BE']);
     setExtraGuidance('');
     if (customImage?.previewUrl) {
       URL.revokeObjectURL(customImage.previewUrl);
@@ -279,25 +279,25 @@ export default function SubtaskDrawer({
   };
 
   // Kaç platform ve subtask aktarılacağını hesapla
-  const activeExportCount = generatedResult 
+  const activeExportCount = generatedResult
     ? Object.keys(generatedResult.scenarios).filter((plat) => {
-        const p = generatedResult.scenarios[plat];
-        return p.positive.selected || p.negative.selected;
-      }).length
+      const p = generatedResult.scenarios[plat];
+      return p.positive.selected || p.negative.selected;
+    }).length
     : 0;
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden animate-fade-in">
-      
+
       {/* Karartma Backdrop */}
-      <div 
+      <div
         onClick={onClose}
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity cursor-pointer"
       ></div>
 
       <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
         <div className="w-screen max-w-3xl bg-white shadow-2xl border-l border-slate-200 flex flex-col justify-between animate-slide-in-right">
-          
+
           {/* Drawer Başlık */}
           <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -340,7 +340,7 @@ export default function SubtaskDrawer({
 
           {/* Drawer İçerik Akışı (Scrollable) */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            
+
             {/* 1. ADIM: KONFİGÜRASYON VE GİRDİLER */}
             {!generatedResult && !isGenerating && (
               <SubtaskConfigStep
@@ -372,7 +372,7 @@ export default function SubtaskDrawer({
             {/* 2. ADIM: YÜKLENİYOR SİMÜLASYONU */}
             {isGenerating && (
               isDevMode || !useAi ? (
-                <DevSubtaskLoading 
+                <DevSubtaskLoading
                   storyKeys={storyKey.split(/[,;\s]+/).map((k) => k.trim().toUpperCase()).filter(Boolean)}
                   selectedPlatforms={selectedPlatforms}
                   variant={isDevMode ? 'dev' : 'test'}
@@ -404,11 +404,10 @@ export default function SubtaskDrawer({
                   type="button"
                   onClick={handleExportToJira}
                   disabled={!generatedResult || activeExportCount === 0 || isCreatingSubtask}
-                  className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                    generatedResult && activeExportCount > 0 && !isCreatingSubtask
+                  className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${generatedResult && activeExportCount > 0 && !isCreatingSubtask
                       ? 'jira-gradient-bg text-white shadow-md shadow-jira-600/25 hover:shadow-jira-600/35 hover:brightness-105 active:scale-[0.99] cursor-pointer'
                       : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
-                  }`}
+                    }`}
                 >
                   {isCreatingSubtask ? (
                     <>
