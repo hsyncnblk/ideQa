@@ -17,7 +17,11 @@ export function useAuth() {
   const savedToken = localStorage.getItem(STORAGE_KEYS.token) || '';
   const savedUser = localStorage.getItem(STORAGE_KEYS.user) || '';
   const savedEmail = localStorage.getItem(STORAGE_KEYS.email) || '';
-  const savedJiraUrl = localStorage.getItem(STORAGE_KEYS.jiraUrl) || '';
+  let savedJiraUrl = localStorage.getItem(STORAGE_KEYS.jiraUrl) || '';
+  if (savedJiraUrl.includes('turkuvaz-jira') || savedJiraUrl.includes('your-domain')) {
+    localStorage.removeItem(STORAGE_KEYS.jiraUrl);
+    savedJiraUrl = '';
+  }
   let savedTeam = localStorage.getItem(STORAGE_KEYS.team);
   const savedSetupDone = localStorage.getItem(STORAGE_KEYS.setupDone) === 'true';
 
@@ -95,8 +99,7 @@ export function useAuth() {
 
     localStorage.removeItem(STORAGE_KEYS.token);
     localStorage.removeItem(STORAGE_KEYS.user);
-    localStorage.removeItem(STORAGE_KEYS.email);
-    // Setup ve custom Jira URL durumunu koruyabiliriz
+    // jiraUrl ve email kullanıcıyı hatırlamak için localStorage'da korunur
   };
 
   return {

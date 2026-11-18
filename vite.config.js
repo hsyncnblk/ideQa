@@ -187,11 +187,12 @@ function devApiProxyPlugin(env) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const jiraBaseUrl = (env.VITE_JIRA_BASE_URL || '').replace(/\/+$/, '')
+  const isRealBaseUrl = jiraBaseUrl && !jiraBaseUrl.includes('your-domain')
 
   return {
     plugins: [react(), devApiProxyPlugin(env)],
     server: {
-      proxy: jiraBaseUrl ? {
+      proxy: isRealBaseUrl ? {
         '/jira-api': {
           target: jiraBaseUrl,
           changeOrigin: true,

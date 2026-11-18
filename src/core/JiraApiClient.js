@@ -17,7 +17,7 @@ class JiraApiClient {
    * @returns {string}
    */
   get apiBase() {
-    return envConfig.isDevelopment ? '/jira-api' : '/api/jira';
+    return '/api/jira';
   }
 
   /**

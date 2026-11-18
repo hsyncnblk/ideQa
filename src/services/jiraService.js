@@ -197,15 +197,56 @@ async function postIssueSafe(payload) {
 
       // 1. Jira tarafından dönen field hatalarını (örn. reporter, assignee, customfield, vb.) tespit edip kaldır
       for (const fieldName of Object.keys(errors)) {
+        if (fieldName === 'components' && /gerekiyor|required/i.test(errors[fieldName] || errorText)) {
+          // Bileşen zorunlu kuralı varsa alanı silme!
+          continue;
+        }
         if (currentPayload.fields[fieldName] !== undefined) {
           delete currentPayload.fields[fieldName];
           modified = true;
         }
       }
 
-      // 2. Metin içinde geçen component hatası fallback'i
-      if (currentPayload.fields.components && /component/i.test(errorText)) {
+      // 1b. Eğer bileşen zorunluysa ("Bileşenler gerekiyor") ve payload'da yoksa:
+      // Önce ana Story'den, sonra projeden bileşen çekmeyi dene
+      const isComponentRequired = /gerekiyor|required/i.test(errorText) && /component|bileşen/i.test(errorText);
+      if (isComponentRequired && (!currentPayload.fields.components || currentPayload.fields.components.length === 0)) {
+        try {
+          if (currentPayload.fields.parent?.key) {
+            const parentData = await jiraApiClient.get(
+              `/rest/api/2/issue/${currentPayload.fields.parent.key}?fields=components`
+            );
+            if (parentData?.fields?.components?.length > 0) {
+              currentPayload.fields.components = parentData.fields.components.map((c) => ({ name: c.name }));
+              modified = true;
+            }
+          }
+          if (!modified && currentPayload.fields.project?.key) {
+            const projComps = await jiraApiClient.get(
+              `/rest/api/2/project/${currentPayload.fields.project.key}/components`
+            );
+            if (Array.isArray(projComps) && projComps.length > 0) {
+              currentPayload.fields.components = [{ name: projComps[0].name }];
+              modified = true;
+            }
+          }
+        } catch (fetchErr) {
+          logError('postIssueSafe.autoFillComponents', fetchErr);
+        }
+      }
+
+      // 2. Metin içinde geçen component hatası fallback'i (zorunlu uyarısı DEĞİLSE sil)
+      if (!isComponentRequired && currentPayload.fields.components && /component/i.test(errorText)) {
         delete currentPayload.fields.components;
+        modified = true;
+      }
+
+      // 2b. IssueType SubTask-Test desteklenmiyorsa fallback: 'Subtask'
+      if (
+        currentPayload.fields.issuetype?.name === 'SubTask-Test' &&
+        (/issuetype/i.test(errorText) || /issue type/i.test(errorText))
+      ) {
+        currentPayload.fields.issuetype = { name: 'Subtask' };
         modified = true;
       }
 
@@ -261,7 +302,7 @@ export const jiraService = {
   async fetchStory(issueKey) {
     try {
       const data = await jiraApiClient.get(
-        `/rest/api/2/issue/${issueKey}?fields=summary,description,status,issuetype,attachment`
+        `/rest/api/2/issue/${issueKey}?fields=summary,description,status,issuetype,attachment,components`
       );
       return {
         key: data.key,
@@ -269,6 +310,7 @@ export const jiraService = {
         description: data.fields?.description || '',
         status: data.fields?.status?.name || '',
         type: data.fields?.issuetype?.name || '',
+        components: data.fields?.components || [],
         attachments: (data.fields?.attachment || []).map((att) => ({
           id: att.id,
           filename: att.filename,
@@ -515,6 +557,21 @@ export const jiraService = {
     const createdSubtasks = [];
     const { fields: teamFields } = await buildTeamFields(team);
 
+    // Eğer takım eşleşmesinde component yoksa, ana Story'nin bileşenlerini (components) miras al
+    if (!teamFields.components || teamFields.components.length === 0) {
+      try {
+        const parentStory = await this.fetchStory(storyKey);
+        if (parentStory?.components && parentStory.components.length > 0) {
+          teamFields.components = parentStory.components.map((c) => ({ name: c.name || c }));
+        }
+      } catch (err) {
+        logError('createBulkPlatformSubtasks.inheritComponents', err);
+      }
+    }
+
+    // Subtask Test modunda 'SubTask-Test', Dev modunda 'Subtask'
+    const issueTypeName = isDevMode ? 'Subtask' : 'SubTask-Test';
+
     for (const platform of selectedPlatforms) {
       const prefix = isDevMode ? '' : 'Test ';
       const title = storySummary
@@ -540,7 +597,7 @@ export const jiraService = {
           parent: { key: storyKey },
           summary: title,
           description: descriptionText.trim() || 'Senaryo içeriği boş.',
-          issuetype: { name: 'Subtask' },
+          issuetype: { name: issueTypeName },
           labels: [FIXED_AUTOMATION_LABEL],
           ...teamFields,
           ...buildOwnerFields(),
@@ -580,12 +637,19 @@ export const jiraService = {
    * @returns {Promise<Array>}
    */
   async fetchRecentSubtasks() {
-    const jql = 'reporter = currentUser() AND issueType = Subtask ORDER BY created DESC';
+    const jql = 'reporter = currentUser() AND issueType in (Subtask, "SubTask-Test") ORDER BY created DESC';
 
     try {
-      const data = await jiraApiClient.get(
-        `/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=10&fields=summary,status,created,parent,creator`
-      );
+      let data;
+      try {
+        data = await jiraApiClient.get(
+          `/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=10&fields=summary,status,created,parent,creator`
+        );
+      } catch {
+        data = await jiraApiClient.get(
+          `/rest/api/2/search?jql=${encodeURIComponent('reporter = currentUser() AND issueType = Subtask ORDER BY created DESC')}&maxResults=10&fields=summary,status,created,parent,creator`
+        );
+      }
 
       return (data.issues || []).map((issue) => {
         const date = new Date(issue.fields.created);

@@ -24,11 +24,11 @@ export const TEAM_JIRA_MAPPINGS = {
     mpTeam: 'Vendor Rangers',
   },
   'Soupers': {
-    component: null,
+    component: 'OTOMASYON',
     mpTeam: 'Soupers',
   },
   'Lots': {
-    component: null,
+    component: 'OTOMASYON',
     mpTeam: 'Lord Of The Sprints',
   },
   'Ceo': {
@@ -36,7 +36,7 @@ export const TEAM_JIRA_MAPPINGS = {
     mpTeam: 'CEO',
   },
   'TheCodeFather': {
-    component: null,
+    component: 'OTOMASYON',
     mpTeam: 'TheCodeFather',
   },
   'PIMFix': {
@@ -49,7 +49,7 @@ export const TEAM_JIRA_MAPPINGS = {
     mpTeam: 'Vendor Rangers',
   },
   'CMS': {
-    component: null,
+    component: 'OTOMASYON',
     mpTeam: 'TheCodeFather',
   },
   'CEO': {

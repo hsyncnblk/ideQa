@@ -14,14 +14,48 @@ import { envConfig } from '../../config/envConfig';
 import { jiraService } from '../../services/jiraService';
 
 export default function LoginScreen({ onLoginSuccess }) {
-  const [jiraUrl, setJiraUrl] = useState(
-    localStorage.getItem('jira_custom_base_url') || envConfig.jira.baseUrl || ''
-  );
-  const [email, setEmail] = useState('');
+  const [jiraUrl, setJiraUrl] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const saved = localStorage.getItem('jira_custom_base_url') || '';
+    if (saved && (saved.includes('turkuvaz-jira') || saved.includes('your-domain'))) {
+      localStorage.removeItem('jira_custom_base_url');
+      return '';
+    }
+    if (saved) {
+      return saved;
+    }
+    const envUrl = envConfig.jira.baseUrl || '';
+    if (envUrl && !envUrl.includes('your-domain') && !envUrl.includes('turkuvaz-jira')) {
+      return envUrl;
+    }
+    return '';
+  });
+  const [email, setEmail] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('jira_email') || '';
+  });
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleJiraUrlChange = (e) => {
+    const val = e.target.value;
+    setJiraUrl(val);
+    if (error) setError('');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('jira_custom_base_url', val.trim());
+    }
+  };
+
+  const handleEmailChange = (e) => {
+    const val = e.target.value;
+    setEmail(val);
+    if (error) setError('');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('jira_email', val.trim());
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,6 +77,21 @@ export default function LoginScreen({ onLoginSuccess }) {
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       cleanUrl = `https://${cleanUrl}`;
     }
+
+    try {
+      const parsed = new URL(cleanUrl);
+      cleanUrl = parsed.origin;
+    } catch {
+      setError('Lütfen geçerli bir Jira adresi girin (Örn: firmaniz.atlassian.net).');
+      return;
+    }
+
+    // Kullanıcı adresini ve e-postasını kalıcı hatırla
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('jira_custom_base_url', cleanUrl);
+      localStorage.setItem('jira_email', email.trim());
+    }
+    setJiraUrl(cleanUrl);
 
     setError('');
     setIsLoading(true);
@@ -103,14 +152,14 @@ export default function LoginScreen({ onLoginSuccess }) {
               <input
                 type="text"
                 value={jiraUrl}
-                onChange={(e) => {
-                  setJiraUrl(e.target.value);
-                  if (error) setError('');
-                }}
-                placeholder="turkuvaz-jira.atlassian.net"
+                onChange={handleJiraUrlChange}
+                placeholder="firmaniz.atlassian.net"
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-jira-500 focus:ring-jira-100 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all"
               />
             </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Örn: firmaniz.atlassian.net veya https://firmaniz.atlassian.net
+            </p>
           </div>
 
           {/* Email Alanı */}
@@ -125,10 +174,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (error) setError('');
-                }}
+                onChange={handleEmailChange}
                 placeholder="ornek@sirket.com"
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-jira-500 focus:ring-jira-100 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 transition-all"
               />

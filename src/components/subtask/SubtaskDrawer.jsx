@@ -254,6 +254,7 @@ export default function SubtaskDrawer({
         platforms: platformsToExport,
         scenarios: generatedResult.scenarios,
         team: selectedTeam,
+        isDevMode: false,
       });
 
       handleReset();
