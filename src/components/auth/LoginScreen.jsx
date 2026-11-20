@@ -17,15 +17,11 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [jiraUrl, setJiraUrl] = useState(() => {
     if (typeof window === 'undefined') return '';
     const saved = localStorage.getItem('jira_custom_base_url') || '';
-    if (saved && (saved.includes('turkuvaz-jira') || saved.includes('your-domain'))) {
-      localStorage.removeItem('jira_custom_base_url');
-      return '';
-    }
-    if (saved) {
+    if (saved && !saved.includes('your-domain')) {
       return saved;
     }
     const envUrl = envConfig.jira.baseUrl || '';
-    if (envUrl && !envUrl.includes('your-domain') && !envUrl.includes('turkuvaz-jira')) {
+    if (envUrl && !envUrl.includes('your-domain')) {
       return envUrl;
     }
     return '';

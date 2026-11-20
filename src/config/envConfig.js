@@ -7,11 +7,11 @@ export const envConfig = {
   jira: {
     get baseUrl() {
       const customUrl = typeof window !== 'undefined' ? localStorage.getItem('jira_custom_base_url') : null;
-      if (customUrl && !customUrl.includes('your-domain') && !customUrl.includes('turkuvaz-jira')) {
+      if (customUrl && !customUrl.includes('your-domain')) {
         return customUrl.replace(/\/+$/, '');
       }
       const envUrl = import.meta.env.VITE_JIRA_BASE_URL || '';
-      if (envUrl && !envUrl.includes('your-domain') && !envUrl.includes('turkuvaz-jira')) {
+      if (envUrl && !envUrl.includes('your-domain')) {
         return envUrl.replace(/\/+$/, '');
       }
       return '';

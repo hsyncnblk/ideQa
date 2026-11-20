@@ -18,7 +18,7 @@ export function useAuth() {
   const savedUser = localStorage.getItem(STORAGE_KEYS.user) || '';
   const savedEmail = localStorage.getItem(STORAGE_KEYS.email) || '';
   let savedJiraUrl = localStorage.getItem(STORAGE_KEYS.jiraUrl) || '';
-  if (savedJiraUrl.includes('turkuvaz-jira') || savedJiraUrl.includes('your-domain')) {
+  if (savedJiraUrl.includes('your-domain')) {
     localStorage.removeItem(STORAGE_KEYS.jiraUrl);
     savedJiraUrl = '';
   }
@@ -45,10 +45,13 @@ export function useAuth() {
   const resolvedTeam = matchedTeam ? matchedTeam.name : MP_TEAMS[0].name;
   const effectiveSetupDone = savedSetupDone && isTeamValid;
 
-  const [isAuthenticated, setIsAuthenticated] = useState(!!savedToken);
+  const effectiveJiraUrl = (savedJiraUrl || envConfig.jira.baseUrl || '').replace(/\/+$/, '');
+  const isAuthValid = Boolean(savedToken && effectiveJiraUrl);
+
+  const [isAuthenticated, setIsAuthenticated] = useState(isAuthValid);
   const [jiraToken, setJiraToken] = useState(savedToken);
   const [jiraEmail, setJiraEmail] = useState(savedEmail);
-  const [jiraUrl, setJiraUrl] = useState(savedJiraUrl || envConfig.jira.baseUrl);
+  const [jiraUrl, setJiraUrl] = useState(effectiveJiraUrl);
   const [currentUser, setCurrentUser] = useState(savedUser);
   const [selectedTeam, setSelectedTeam] = useState(resolvedTeam);
   const [isSetupComplete, setIsSetupComplete] = useState(effectiveSetupDone);
